@@ -2,7 +2,7 @@
 TARGET = Orchard
 
 # Sources
-CPP_SOURCES = ../kxmx_bluemchen/src/kxmx_bluemchen.cpp Orchard.cpp
+CPP_SOURCES = ../kxmx_bluemchen/src/kxmx_bluemchen.cpp ./kxmx_bluemchen/Orchard.cpp
 
 # Library Locations
 LIBDAISY_DIR = ../DaisyExamples/libdaisy/
