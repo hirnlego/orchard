@@ -1,11 +1,18 @@
 #include "daisysp.h"
-#include "../../kxmx_bluemchen/src/kxmx_bluemchen.h"
+#include "kxmx_bluemchen.h"
 
 using namespace kxmx;
 using namespace daisy;
 using namespace daisysp;
 
 Bluemchen bluemchen;
+
+Oscillator *highOscillators;
+Oscillator *lowOscillators;
+
+
+Particle geiger;
+WhiteNoise noise;
 
 Parameter knob1;
 Parameter knob2;
@@ -32,9 +39,21 @@ void UpdateControls()
 
 void UpdateOled()
 {
-    int width = bluemchen.display.Width();
+    //int width = bluemchen.display.Width();
 
     bluemchen.display.Fill(false);
+
+    std::string str{"Starting..."};
+    char *cstr{&str[0]};
+
+    str = std::to_string(static_cast<int>(knob1.Value() * 100));
+    bluemchen.display.SetCursor(0, 0);
+    bluemchen.display.WriteString(cstr, Font_6x8, true);
+
+    str = std::to_string(static_cast<int>(knob2.Value() * 100));
+    bluemchen.display.SetCursor(0, 8);
+    bluemchen.display.WriteString(cstr, Font_6x8, true);
+
     bluemchen.display.Update();
 }
 
@@ -44,10 +63,19 @@ void UpdateMenu()
 
 void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, size_t size)
 {
+    float sig;
     for (size_t i = 0; i < size; i++)
     {
-        OUT_L[i] = IN_L[i];
-        OUT_R[i] = IN_R[i];
+        for (int j = 0; j < 1; j++)
+        {
+            //sig += highOscillators[j].Process() * 0.5f;
+        }
+
+        geiger.SetFreq(knob1.Value() * 1000.f);
+        geiger.SetResonance(knob2.Value());
+        sig += geiger.Process() * 0.5f;
+
+        OUT_L[i] = OUT_R[i] = sig;
     }
 }
 
@@ -64,6 +92,19 @@ int main(void)
 
     cv1.Init(bluemchen.controls[bluemchen.CTRL_3], 0.0f, 1.0f, Parameter::LINEAR);
     cv2.Init(bluemchen.controls[bluemchen.CTRL_4], 0.0f, 1.0f, Parameter::LINEAR);
+
+    float sampleRate = bluemchen.AudioSampleRate();
+
+    geiger.Init(sampleRate);
+    geiger.SetDensity(0.1f);
+    geiger.SetSpread(2.f);
+
+    noise.Init();
+
+    highOscillators[0].Init(sampleRate);
+    highOscillators[0].SetWaveform(Oscillator::WAVE_SIN);
+    highOscillators[0].SetFreq(440);
+    highOscillators[0].SetAmp(0.5);
 
     bluemchen.StartAudio(AudioCallback);
 

@@ -4,14 +4,20 @@
             "name": "Mac",
             "includePath": [
                 "${workspaceFolder}/**",
+                "${workspaceFolder}",
                 "../DaisyExamples/libdaisy/**",
-                "../DaisyExamples/DaisySp/**"
+                "../DaisyExamples/DaisySp/**",
+                "../kxmx_bluemchen/src/**"
             ],
-            "defines": [],
+            "defines": [
+                "_DEBUG",
+                "UNICODE",
+                "_UNICODE"
+            ],
             "macFrameworkPath": [],
-            "compilerPath": "/usr/local/bin/arm-none-eabi-gcc",
-            "cStandard": "gnu17",
-            "cppStandard": "gnu++14",
+            "compilerPath": "/usr/local/bin/arm-none-eabi-g++",
+            "cStandard": "c11",
+            "cppStandard": "c++17",
             "intelliSenseMode": "macos-gcc-arm"
         }
     ],
