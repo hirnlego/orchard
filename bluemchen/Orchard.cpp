@@ -6,6 +6,8 @@
 #include "Synthesis/variableshapeosc.h"
 #include "Noise/whitenoise.h"
 #include "Filters/svf.h"
+#include "Filters/atone.h"
+#include "Filters/tone.h"
 
 using namespace kxmx;
 using namespace daisy;
@@ -43,6 +45,9 @@ WhiteNoise noise;
 Svf leftFiler;
 Svf rightFiler;
 
+ATone noiseFilterHP;
+Tone noiseFilterLP;
+
 enum class Range
 {
     FULL,
@@ -67,7 +72,6 @@ enum class FilterType
     BP,
 };
 FilterType filterType;
-
 
 std::string str{"Starting..."};
 char *cstr{&str[0]};
@@ -159,7 +163,11 @@ void Randomize()
     lOsc5.SetFreq(mtof(conf[9].pitch));
     lOsc5.SetPW(RandomFloat(-1.f, 1.f));
 
+    noiseFilterHP.SetFreq(mtof(conf[10].pitch));
+    noiseFilterLP.SetFreq(mtof(conf[10].pitch));
+
     //geiger.SetFreq(mtof(conf[11].pitch));
+
 
     // Filter.
     filterType = static_cast<FilterType>(std::rand() % 3);
@@ -187,6 +195,9 @@ void SetPitch(int pitch)
     lOsc3.SetFreq(mtof(conf[7].pitch + pitch));
     lOsc4.SetFreq(mtof(conf[8].pitch + pitch));
     lOsc5.SetFreq(mtof(conf[9].pitch + pitch));
+
+    noiseFilterHP.SetFreq(mtof(conf[10].pitch + pitch));
+    noiseFilterLP.SetFreq(mtof(conf[10].pitch + pitch));
 }
 
 void UpdateKnob1()
@@ -285,6 +296,10 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
                 else if (j == 10)
                 {
                     sig = noise.Process();
+                    noiseFilterHP.Process(sig);
+                    sig = noiseFilterHP.High();
+                    noiseFilterLP.Process(sig);
+                    sig = noiseFilterLP.Low();
                 }
                 else if (j == 11)
                 {
@@ -296,10 +311,9 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
             }
         }
 
-        // Effects.
+        // Filter.
         leftFiler.Process(left);
         rightFiler.Process(right);
-
         switch (filterType)
         {
         case FilterType::LP:
@@ -320,6 +334,12 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
         default:
             break;
         }
+        
+        // Resonator.
+
+        // Delay.
+
+        // Reverb.
 
         OUT_L[i] = left;
         OUT_R[i] = right;
@@ -378,6 +398,8 @@ int main(void)
 
     noise.Init();
     noise.SetAmp(1.f);
+    noiseFilterHP.Init(sampleRate);
+    noiseFilterLP.Init(sampleRate);
 
     geiger.Init(sampleRate);
 

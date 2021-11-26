@@ -7,6 +7,8 @@
                 "${workspaceFolder}",
                 "../DaisyExamples/libdaisy/**",
                 "../DaisyExamples/DaisySp/**",
+                "../libDaisy/**",
+                "../DaisySp/**",
                 "../kxmx_bluemchen/src/**"
             ],
             "defines": [
