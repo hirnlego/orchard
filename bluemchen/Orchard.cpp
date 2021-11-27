@@ -47,8 +47,8 @@ Oscillator lOsc5;              // Parabolic
 BlOsc geiger;
 WhiteNoise noise;
 
-Svf leftFiler;
-Svf rightFiler;
+Svf leftFilter;
+Svf rightFilter;
 
 ATone noiseFilterHP;
 Tone noiseFilterLP;
@@ -64,6 +64,8 @@ bool envelopeGate{ false };
 ReverbSc DSY_SDRAM_BSS reverb;
 DelayLine<float, MAX_DELAY> DSY_SDRAM_BSS leftDelayLine;
 DelayLine<float, MAX_DELAY> DSY_SDRAM_BSS rightDelayLine;
+
+
 
 struct delay
 {
@@ -86,6 +88,53 @@ struct delay
 
 delay leftDelay;
 delay rightDelay;
+
+DelayLine<float, MAX_DELAY> DSY_SDRAM_BSS resoPoleDelayLine;
+
+struct resoPole
+{
+    DelayLine<float, MAX_DELAY> *del;
+    float currentDelay;
+    float delayTarget;
+
+    Svf filt;
+
+    float damp{ 0.f }; // 0.0 and sample_rate / 3
+    float reso{ 0.f }; // 0.0 : 0.4
+    float decay{ 0.f }; // 0.0 : ?
+    float detune{ 0.f }; // 0.0 : 0.07
+    float pitch{ 60.f };
+
+    resoPoleDelayLine.Init();
+    del = &resoPoleDelayLine;
+
+    filt.Init(sampleRate);
+    filt.SetFreq(damp);
+    filt.SetRes(reso);
+
+    pitch *= -0.5017f;
+    pitch += 17.667f;
+    pitch -= detune;
+    delayTarget = pow10f(pitch/20.0f); // ms
+    delayTarget *= sampleRate * 0.001f; // ms to samples ?
+
+    float Process(float in)
+    {
+        //set delay times
+        fonepole(currentDelay, delayTarget, .0002f);
+        del->SetDelay(currentDelay);
+
+        float sig = del->Read();
+        filt.Process(sig);
+        sig = filt.Low();
+        del->Write((feedback * sig) + in);
+
+        return sig;
+    }
+};
+
+
+
 
 enum class Range
 {
@@ -302,12 +351,12 @@ void Randomize()
     freq = mtof(pitch);
     float res{ RandomFloat(0.f, 1.f) };
     float drive{ RandomFloat(0.f, 1.f) };
-    leftFiler.SetFreq(freq);
-    leftFiler.SetRes(res);
-    leftFiler.SetDrive(drive);
-    rightFiler.SetFreq(freq);
-    rightFiler.SetRes(res);
-    rightFiler.SetDrive(drive);
+    leftFilter.SetFreq(freq);
+    leftFilter.SetRes(res);
+    leftFilter.SetDrive(drive);
+    rightFilter.SetFreq(freq);
+    rightFilter.SetRes(res);
+    rightFilter.SetDrive(drive);
 
     // Resonator.
     effectsConf[1].active = false; //1 == std::rand() % 2;
@@ -488,23 +537,23 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
 
         // Filter.
         if (effectsConf[0].active) {
-            leftFiler.Process(left);
-            rightFiler.Process(right);
+            leftFilter.Process(left);
+            rightFilter.Process(right);
             switch (filterType)
             {
             case FilterType::LP:
-                leftW = leftFiler.Low();
-                rightW = rightFiler.Low();
+                leftW = leftFilter.Low();
+                rightW = rightFilter.Low();
                 break;
 
             case FilterType::HP:
-                leftW = leftFiler.High();
-                rightW = rightFiler.High();
+                leftW = leftFilter.High();
+                rightW = rightFilter.High();
                 break;
 
             case FilterType::BP:
-                leftW = leftFiler.Band();
-                rightW = rightFiler.Band();
+                leftW = leftFilter.Band();
+                rightW = rightFilter.Band();
                 break;
 
             default:
@@ -604,8 +653,8 @@ int main(void)
         envelopes[i].Init(sampleRate);
     }
 
-    leftFiler.Init(sampleRate);
-    rightFiler.Init(sampleRate);
+    leftFilter.Init(sampleRate);
+    rightFilter.Init(sampleRate);
 
     leftDelayLine.Init();
     rightDelayLine.Init();
