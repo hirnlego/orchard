@@ -1,13 +1,18 @@
 #include "kxmx_bluemchen.h"
-#include "dsp.h"
 #include "Synthesis/blosc.h"
 #include "Synthesis/oscillator.h"
 #include "Synthesis/variablesawosc.h"
 #include "Synthesis/variableshapeosc.h"
+#include "Control/adsr.h"
 #include "Noise/whitenoise.h"
 #include "Filters/svf.h"
 #include "Filters/atone.h"
 #include "Filters/tone.h"
+#include "Effects/reverbsc.h"
+#include "Utility/delayline.h"
+#include "Utility/dsp.h"
+
+#define MAX_DELAY static_cast<size_t>(48000 * 1.f)
 
 using namespace kxmx;
 using namespace daisy;
@@ -48,7 +53,39 @@ Svf rightFiler;
 ATone noiseFilterHP;
 Tone noiseFilterLP;
 
+float sampleRate;
+
 constexpr int kGenerators{ 12 };
+
+Adsr envelopes[kGenerators];
+
+bool envelopeGate{ false };
+
+ReverbSc DSY_SDRAM_BSS reverb;
+DelayLine<float, MAX_DELAY> DSY_SDRAM_BSS leftDelayLine;
+DelayLine<float, MAX_DELAY> DSY_SDRAM_BSS rightDelayLine;
+
+struct delay
+{
+    DelayLine<float, MAX_DELAY> *del;
+    float currentDelay;
+    float delayTarget;
+
+    float Process(float feedback, float in)
+    {
+        //set delay times
+        fonepole(currentDelay, delayTarget, .0002f);
+        del->SetDelay(currentDelay);
+
+        float read = del->Read();
+        del->Write((feedback * read) + in);
+
+        return read;
+    }
+};
+
+delay leftDelay;
+delay rightDelay;
 
 enum class Range
 {
@@ -57,13 +94,14 @@ enum class Range
     LOW,
 };
 
-struct Conf
+struct GeneratorConf
 {
     bool active;
     float volume;
     float pan;
-    float pitch;
+    int pitch;
     float character;
+
 };
 // Generators configuration:
 // 0 = hOsc1
@@ -78,7 +116,15 @@ struct Conf
 // 9 = lOsc4
 // 10 = hOsc5
 // 11 = lOsc5
-Conf conf[kGenerators];
+GeneratorConf generatorsConf[kGenerators];
+
+struct EffectConf
+{
+    bool active;
+    float dryWet;
+    float param1;
+};
+EffectConf effectsConf[4];
 
 enum class FilterType
 {
@@ -110,34 +156,39 @@ void UpdateOled()
     bluemchen.display.Update();
 }
 
+float CalcFrequency(int basePitch, float pitch)
+{
+    float midi_nn = fclamp(basePitch + pitch, 0.f, 120.f);
+
+    return mtof(midi_nn);
+}
+
 float RandomFloat(float min, float max)
 {
     return min + static_cast<float>(std::rand()) / (static_cast<float>(RAND_MAX / (max - min)));
 }
 
-int RandomizePitch(Range range)
+int RandomPitch(Range range)
 {
     int rnd;
 
     if (Range::HIGH == range)
     {
-        rnd = std::rand() % 62 + 53;
+        // (midi 66-72)
+        rnd = RandomFloat(42, 72);
     }
     else if (Range::LOW == range)
     {
-        rnd = std::rand() % 22 + 30;
+        // (midi 36-65)
+        rnd = RandomFloat(12, 41);
     }
     else
     {
-        rnd = std::rand() % 85 + 30;
+        // (midi 36-96)
+        rnd = RandomFloat(12, 72);
     }
 
     return rnd;
-}
-
-float RandomizeFrequency(Range range)
-{
-    return mtof(RandomizePitch(range));
 }
 
 void Randomize()
@@ -152,69 +203,103 @@ void Randomize()
         if (i >= half && !active && actives < half) {
             active = true;
         }
-        active = true;
-        conf[i].active = active;
+        generatorsConf[i].active = active;
         if (active) {
             ++actives;
         }
-        conf[i].pan = RandomFloat(0.f, 1.f);
-        conf[i].volume = RandomFloat(0.3f, 0.5f);
+        generatorsConf[i].pan = RandomFloat(0.f, 1.f);
+        generatorsConf[i].volume = RandomFloat(0.3f, 0.5f);
 
         if (0 == i || 3 == i || 6 == i || 8 == i || 10 == i)
         {
-            conf[i].pitch = RandomizePitch(Range::HIGH);
+            generatorsConf[i].pitch = RandomPitch(Range::HIGH);
         }
         else if (1 == i || 4 == i || 7 == i || 9 == i || 11 == i)
         {
-            conf[i].pitch = RandomizePitch(Range::LOW);
+            generatorsConf[i].pitch = RandomPitch(Range::LOW);
         }
         else
         {
-            conf[i].pitch = RandomizePitch(Range::FULL);
+            generatorsConf[i].pitch = RandomPitch(Range::FULL);
         }
+
+        /*
+        envelopes[i].SetTime(ADSR_SEG_ATTACK, RandomFloat(0.f, 2.f));
+        envelopes[i].SetTime(ADSR_SEG_DECAY, RandomFloat(0.f, 2.f));
+        envelopes[i].SetTime(ADSR_SEG_RELEASE, RandomFloat(0.f, 2.f));
+        envelopes[i].SetSustainLevel(RandomFloat(0.f, 1.f));
+        */
+
+        envelopes[i].SetAttackTime(0.f);
+        envelopes[i].SetDecayTime(0.1f);
+        envelopes[i].SetSustainLevel(1.f);
+        envelopes[i].SetReleaseTime(0.f);
     }
     for (int i = 0; i < kGenerators; i++)
     {
-        conf[i].volume = 1.f / actives; //RandomFloat(0.3f, 0.5f);
+        if (generatorsConf[i].active) {
+            generatorsConf[i].volume = 1.f / actives; //RandomFloat(0.3f, 0.5f);
+        }
     }
 
-    hOsc1.SetFreq(mtof(conf[0].pitch));
+    hOsc1.SetFreq(mtof(generatorsConf[0].pitch));
 
-    hOsc2.SetFreq(mtof(conf[3].pitch));
+    hOsc2.SetFreq(mtof(generatorsConf[3].pitch));
     hOsc2.SetWaveshape(RandomFloat(0.f, 1.f));
     hOsc2.SetPW(RandomFloat(-1.f, 1.f));
 
-    hOsc3.SetFreq(mtof(conf[6].pitch));
+    hOsc3.SetFreq(mtof(generatorsConf[6].pitch));
     hOsc3.SetPw(RandomFloat(-1.f, 1.f));
 
-    hOsc4.SetFreq(mtof(conf[8].pitch));
+    hOsc4.SetFreq(mtof(generatorsConf[8].pitch));
     hOsc4.SetPw(RandomFloat(-1.f, 1.f));
 
-    hOsc5.SetFreq(mtof(conf[10].pitch));
+    hOsc5.SetFreq(mtof(generatorsConf[10].pitch));
 
-    lOsc1.SetFreq(mtof(conf[1].pitch));
+    lOsc1.SetFreq(mtof(generatorsConf[1].pitch));
 
-    lOsc2.SetFreq(mtof(conf[4].pitch));
+    lOsc2.SetFreq(mtof(generatorsConf[4].pitch));
     lOsc2.SetWaveshape(RandomFloat(0.f, 1.f));
     lOsc2.SetPW(RandomFloat(-1.f, 1.f));
 
-    lOsc3.SetFreq(mtof(conf[7].pitch));
+    lOsc3.SetFreq(mtof(generatorsConf[7].pitch));
     lOsc3.SetPw(RandomFloat(-1.f, 1.f));
 
-    lOsc4.SetFreq(mtof(conf[9].pitch));
+    lOsc4.SetFreq(mtof(generatorsConf[9].pitch));
     lOsc4.SetPw(RandomFloat(-1.f, 1.f));
 
-    lOsc5.SetFreq(mtof(conf[11].pitch));
+    lOsc5.SetFreq(mtof(generatorsConf[11].pitch));
 
-    float freq{ mtof(conf[2].pitch) };
+    float freq{ mtof(generatorsConf[2].pitch) };
     noiseFilterHP.SetFreq(freq);
     noiseFilterLP.SetFreq(freq);
+    generatorsConf[2].character = RandomFloat(1.f, 2.f);
+
     //geiger.SetFreq(mtof(conf[5].pitch));
 
-
     // Filter.
+    effectsConf[0].active = true; //1 == std::rand() % 2;
+    effectsConf[0].dryWet = RandomFloat(0.f, 1.f);
     filterType = static_cast<FilterType>(std::rand() % 3);
-    freq = RandomizeFrequency(Range::FULL);
+    int pitch;
+    switch (filterType)
+    {
+    case FilterType::HP:
+        pitch = RandomPitch(Range::HIGH);
+        break;
+
+    case FilterType::LP:
+        pitch = RandomPitch(Range::LOW);
+        break;
+
+    case FilterType::BP:
+        pitch = RandomPitch(Range::FULL);
+        break;
+
+    default:
+        break;
+    }
+    freq = mtof(pitch);
     float res{ RandomFloat(0.f, 1.f) };
     float drive{ RandomFloat(0.f, 1.f) };
     leftFiler.SetFreq(freq);
@@ -223,39 +308,74 @@ void Randomize()
     rightFiler.SetFreq(freq);
     rightFiler.SetRes(res);
     rightFiler.SetDrive(drive);
+
+    // Resonator.
+    effectsConf[1].active = false; //1 == std::rand() % 2;
+    effectsConf[1].dryWet = RandomFloat(0.f, 1.f);
+
+    // Delay.
+    effectsConf[2].active = true; //1 == std::rand() % 2;
+    effectsConf[2].dryWet = RandomFloat(0.f, 1.f);
+    effectsConf[2].param1 = RandomFloat(0.f, 1.f);
+    leftDelay.delayTarget = RandomFloat(sampleRate * .05f, MAX_DELAY);
+    rightDelay.delayTarget = RandomFloat(sampleRate * .05f, MAX_DELAY);
+
+    // Reverb.
+    effectsConf[3].active = true; //1 == std::rand() % 2;
+    effectsConf[3].dryWet = RandomFloat(0.f, 1.f);
+    float fb{RandomFloat(0.f, 1.f)};
+    reverb.SetFeedback(fb);
+    reverb.SetLpFreq(RandomFloat(0.f, sampleRate / 3.f));
 }
 
-void SetPitch(int pitch)
+void SetCharacter(float character)
 {
-    hOsc1.SetFreq(mtof(fclamp(conf[0].pitch + pitch, 0, 120)));
-    hOsc2.SetFreq(mtof(fclamp(conf[3].pitch + pitch, 0, 120)));
-    hOsc3.SetFreq(mtof(fclamp(conf[6].pitch + pitch, 0, 120)));
-    hOsc4.SetFreq(mtof(fclamp(conf[8].pitch + pitch, 0, 120)));
-    hOsc5.SetFreq(mtof(fclamp(conf[10].pitch + pitch, 0, 120)));
+    hOsc2.SetWaveshape(character);
+    hOsc2.SetPW(1.f - character);
+    hOsc3.SetPw(character);
+    hOsc4.SetPw(character);
 
-    lOsc1.SetFreq(mtof(fclamp(conf[1].pitch + pitch, 0, 120)));
-    lOsc2.SetFreq(mtof(fclamp(conf[4].pitch + pitch, 0, 120)));
-    lOsc3.SetFreq(mtof(fclamp(conf[7].pitch + pitch, 0, 120)));
-    lOsc4.SetFreq(mtof(fclamp(conf[9].pitch + pitch, 0, 120)));
-    lOsc5.SetFreq(mtof(fclamp(conf[11].pitch + pitch, 0, 120)));
+    lOsc2.SetWaveshape(character);
+    lOsc2.SetPW(1.f - character);
+    lOsc3.SetPw(character);
+    lOsc4.SetPw(character);
+}
 
-    float freq{mtof(fclamp(conf[2].pitch + pitch, 0, 120))};
-    noiseFilterHP.SetFreq(freq);
-    noiseFilterLP.SetFreq(freq);
+void SetPitch(float pitch)
+{
+    hOsc1.SetFreq(CalcFrequency(generatorsConf[0].pitch, pitch));
+    hOsc2.SetFreq(CalcFrequency(generatorsConf[3].pitch, pitch));
+    hOsc3.SetFreq(CalcFrequency(generatorsConf[6].pitch, pitch));
+    hOsc4.SetFreq(CalcFrequency(generatorsConf[8].pitch, pitch));
+    hOsc5.SetFreq(CalcFrequency(generatorsConf[10].pitch, pitch));
+
+    lOsc1.SetFreq(CalcFrequency(generatorsConf[1].pitch, pitch));
+    lOsc2.SetFreq(CalcFrequency(generatorsConf[4].pitch, pitch));
+    lOsc3.SetFreq(CalcFrequency(generatorsConf[7].pitch, pitch));
+    lOsc4.SetFreq(CalcFrequency(generatorsConf[9].pitch, pitch));
+    lOsc5.SetFreq(CalcFrequency(generatorsConf[11].pitch, pitch));
+
+    float f{CalcFrequency(generatorsConf[2].pitch, pitch)};
+    noiseFilterHP.SetFreq(f);
+    noiseFilterLP.SetFreq(f);
 }
 
 void UpdateKnob1()
 {
-    SetPitch(fmap(knob1Value, -63, 63));
+    SetPitch(fmap(knob1Value, -30.f, 30.f));
 }
 
 void UpdateKnob2()
 {
+    SetCharacter(knob2Value);
 }
 
 void UpdateCv1()
 {
-    SetPitch(fmap(cv1.Value(), -63, 63));
+    // 0-5v -> 5 octaves
+    float voct = fmap(cv1.Value(), 0.f, 60.f);
+    SetPitch(voct);
+    envelopeGate = true;
 }
 
 void UpdateControls()
@@ -274,7 +394,7 @@ void UpdateControls()
     if (knob1.Value() != knob1Value)
     {
         knob1Value = knob1.Value();
-        //UpdateKnob1();
+        UpdateKnob1();
     }
     if (knob2.Value() != knob2Value)
     {
@@ -303,7 +423,7 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
         for (int j = 0; j < kGenerators; j++)
         {
             float sig;
-            if (conf[j].active) 
+            if (generatorsConf[j].active) 
             {
                 if (j == 0) {
                     sig = hOsc1.Process();
@@ -315,8 +435,10 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
                 else if (j == 2)
                 {
                     sig = noise.Process();
+                    sig = generatorsConf[j].character * sig;
                     sig = noiseFilterHP.Process(sig);
-                    sig = noiseFilterLP.Process(sig);
+                    sig = generatorsConf[j].character * sig;
+                    sig = SoftClip(noiseFilterLP.Process(sig));
                 }
                 else if (j == 3)
                 {
@@ -355,40 +477,63 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
                     sig = lOsc5.Process();
                 }
 
-                left += sig * conf[j].volume * conf[j].pan;
-                right += sig * conf[j].volume * (1 - conf[j].pan);
+                left += sig * generatorsConf[j].volume * (1 - generatorsConf[j].pan); // * envelopes[j].Process(envelopeGate);
+                right += sig * generatorsConf[j].volume * generatorsConf[j].pan; // * envelopes[j].Process(envelopeGate);
             }
         }
 
+        // Effects.
+        float leftW{ 0.f };
+        float rightW{ 0.f };
+
         // Filter.
-        leftFiler.Process(left);
-        rightFiler.Process(right);
-        switch (filterType)
-        {
-        case FilterType::LP:
-            left = leftFiler.Low();
-            right = rightFiler.Low();
-            break;
+        if (effectsConf[0].active) {
+            leftFiler.Process(left);
+            rightFiler.Process(right);
+            switch (filterType)
+            {
+            case FilterType::LP:
+                leftW = leftFiler.Low();
+                rightW = rightFiler.Low();
+                break;
 
-        case FilterType::HP:
-            left = leftFiler.High();
-            right = rightFiler.High();
-            break;
+            case FilterType::HP:
+                leftW = leftFiler.High();
+                rightW = rightFiler.High();
+                break;
 
-        case FilterType::BP:
-            left = leftFiler.Band();
-            right = rightFiler.Band();
-            break;
+            case FilterType::BP:
+                leftW = leftFiler.Band();
+                rightW = rightFiler.Band();
+                break;
 
-        default:
-            break;
+            default:
+                break;
+            }
+            left = effectsConf[0].dryWet * leftW * .3f + (1.0f - effectsConf[0].dryWet) * left;
+            right = effectsConf[0].dryWet * rightW * .3f + (1.0f - effectsConf[0].dryWet) * left;
         }
-        
+
         // Resonator.
+        if (effectsConf[1].active) {
+            left = effectsConf[1].dryWet * leftW * .3f + (1.0f - effectsConf[1].dryWet) * left;
+            right = effectsConf[1].dryWet * rightW * .3f + (1.0f - effectsConf[1].dryWet) * left;
+        }
 
         // Delay.
+        if (effectsConf[2].active) {
+            leftW = leftDelay.Process(effectsConf[2].param1, left);
+            rightW = rightDelay.Process(effectsConf[2].param1, right);
+            left = effectsConf[2].dryWet * leftW * .3f + (1.0f - effectsConf[2].dryWet) * left;
+            right = effectsConf[2].dryWet * rightW * .3f + (1.0f - effectsConf[2].dryWet) * left;
+        }
 
         // Reverb.
+        if (effectsConf[3].active) {
+            reverb.Process(left, right, &leftW, &rightW);
+            left = effectsConf[3].dryWet * leftW * .3f + (1.0f - effectsConf[3].dryWet) * left;
+            right = effectsConf[3].dryWet * rightW * .3f + (1.0f - effectsConf[3].dryWet) * left;
+        }
 
         OUT_L[i] = left;
         OUT_R[i] = right;
@@ -409,7 +554,7 @@ int main(void)
     cv1.Init(bluemchen.controls[bluemchen.CTRL_3], 0.0f, 1.0f, Parameter::LINEAR);
     cv2.Init(bluemchen.controls[bluemchen.CTRL_4], 0.0f, 1.0f, Parameter::LINEAR);
 
-    float sampleRate{ bluemchen.AudioSampleRate() };
+    sampleRate = bluemchen.AudioSampleRate();
 
     hOsc1.Init(sampleRate);
     hOsc1.SetWaveform(Oscillator::WAVE_SIN);
@@ -454,8 +599,23 @@ int main(void)
 
     geiger.Init(sampleRate);
 
+    for (int i = 0; i < kGenerators; i++)
+    {
+        envelopes[i].Init(sampleRate);
+    }
+
     leftFiler.Init(sampleRate);
     rightFiler.Init(sampleRate);
+
+    leftDelayLine.Init();
+    rightDelayLine.Init();
+    leftDelay.del = &leftDelayLine;
+    rightDelay.del = &rightDelayLine;
+
+    float time = fmap(0.5f, 0.3f, 0.99f);
+    float damp = fmap(0.f, 1000.f, 19000.f, Mapping::LOG);
+    reverb.SetFeedback(time);
+    reverb.SetLpFreq(damp);
 
     Randomize();
 
