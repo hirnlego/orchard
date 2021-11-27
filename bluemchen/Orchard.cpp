@@ -28,16 +28,16 @@ float knob1Value;
 float knob2Value;
 
 Oscillator hOsc1;              // Sine
-Oscillator hOsc2;              // Parabolic
+VariableSawOscillator hOsc2;   // Bipolar ramp
 BlOsc hOsc3;                   // Triangle
-VariableSawOscillator hOsc4;   // Bipolar ramp
-VariableShapeOscillator hOsc5; // Ramp/pulse
+BlOsc hOsc4;                   // Square
+Oscillator hOsc5;              // Parabolic
 
 Oscillator lOsc1;              // Sine
-Oscillator lOsc2;              // Parabolic
+VariableSawOscillator lOsc2;   // Bipolar ramp
 BlOsc lOsc3;                   // Triangle
-VariableSawOscillator lOsc4;   // Bipolar ramp
-VariableShapeOscillator lOsc5; // Ramp/pulse
+BlOsc lOsc4;                   // Square
+Oscillator lOsc5;              // Parabolic
 
 BlOsc geiger;
 WhiteNoise noise;
@@ -47,6 +47,8 @@ Svf rightFiler;
 
 ATone noiseFilterHP;
 Tone noiseFilterLP;
+
+constexpr int kGenerators{ 12 };
 
 enum class Range
 {
@@ -63,7 +65,20 @@ struct Conf
     float pitch;
     float character;
 };
-Conf conf[12];
+// Generators configuration:
+// 0 = hOsc1
+// 1 = lOsc1
+// 2 = noise
+// 3 = hOsc2
+// 4 = lOsc2
+// 5 = geiger
+// 6 = hOsc3
+// 7 = lOsc3
+// 8 = hOsc4
+// 9 = lOsc4
+// 10 = hOsc5
+// 11 = lOsc5
+Conf conf[kGenerators];
 
 enum class FilterType
 {
@@ -127,15 +142,29 @@ float RandomizeFrequency(Range range)
 
 void Randomize()
 {
-    for (int i = 0; i < 12; i++)
+    float volume{ 0.f };
+    int actives{ 0 };
+    int half{ kGenerators / 2 };
+    for (int i = 0; i < kGenerators; i++)
     {
-        conf[i].active = std::rand() % 2;
+        bool active{ 1 == std::rand() % 2 };
+        // Limit the number of inactive generators to half of their total number.
+        if (i >= half && !active && actives < half) {
+            active = true;
+        }
+        active = true;
+        conf[i].active = active;
+        if (active) {
+            ++actives;
+        }
         conf[i].pan = RandomFloat(0.f, 1.f);
-        conf[i].volume = RandomFloat(0.f, 1.f);
-        if (i < 5) {
+        conf[i].volume = RandomFloat(0.3f, 0.5f);
+
+        if (0 == i || 3 == i || 6 == i || 8 == i || 10 == i)
+        {
             conf[i].pitch = RandomizePitch(Range::HIGH);
         }
-        else if (i < 10)
+        else if (1 == i || 4 == i || 7 == i || 9 == i || 11 == i)
         {
             conf[i].pitch = RandomizePitch(Range::LOW);
         }
@@ -144,36 +173,50 @@ void Randomize()
             conf[i].pitch = RandomizePitch(Range::FULL);
         }
     }
+    for (int i = 0; i < kGenerators; i++)
+    {
+        conf[i].volume = 1.f / actives; //RandomFloat(0.3f, 0.5f);
+    }
 
     hOsc1.SetFreq(mtof(conf[0].pitch));
-    hOsc2.SetFreq(mtof(conf[1].pitch));
-    hOsc3.SetFreq(mtof(conf[2].pitch));
-    hOsc4.SetFreq(mtof(conf[3].pitch));
-    hOsc4.SetPW(RandomFloat(-1.f, 1.f));
-    hOsc4.SetWaveshape(RandomFloat(0.f, 1.f));
-    hOsc5.SetFreq(mtof(conf[4].pitch));
-    hOsc5.SetPW(RandomFloat(-1.f, 1.f));
 
-    lOsc1.SetFreq(mtof(conf[5].pitch));
-    lOsc2.SetFreq(mtof(conf[6].pitch));
+    hOsc2.SetFreq(mtof(conf[3].pitch));
+    hOsc2.SetWaveshape(RandomFloat(0.f, 1.f));
+    hOsc2.SetPW(RandomFloat(-1.f, 1.f));
+
+    hOsc3.SetFreq(mtof(conf[6].pitch));
+    hOsc3.SetPw(RandomFloat(-1.f, 1.f));
+
+    hOsc4.SetFreq(mtof(conf[8].pitch));
+    hOsc4.SetPw(RandomFloat(-1.f, 1.f));
+
+    hOsc5.SetFreq(mtof(conf[10].pitch));
+
+    lOsc1.SetFreq(mtof(conf[1].pitch));
+
+    lOsc2.SetFreq(mtof(conf[4].pitch));
+    lOsc2.SetWaveshape(RandomFloat(0.f, 1.f));
+    lOsc2.SetPW(RandomFloat(-1.f, 1.f));
+
     lOsc3.SetFreq(mtof(conf[7].pitch));
-    lOsc4.SetFreq(mtof(conf[8].pitch));
-    lOsc4.SetPW(RandomFloat(-1.f, 1.f));
-    lOsc4.SetWaveshape(RandomFloat(0.f, 1.f));
-    lOsc5.SetFreq(mtof(conf[9].pitch));
-    lOsc5.SetPW(RandomFloat(-1.f, 1.f));
+    lOsc3.SetPw(RandomFloat(-1.f, 1.f));
 
-    noiseFilterHP.SetFreq(mtof(conf[10].pitch));
-    noiseFilterLP.SetFreq(mtof(conf[10].pitch));
+    lOsc4.SetFreq(mtof(conf[9].pitch));
+    lOsc4.SetPw(RandomFloat(-1.f, 1.f));
 
-    //geiger.SetFreq(mtof(conf[11].pitch));
+    lOsc5.SetFreq(mtof(conf[11].pitch));
+
+    float freq{ mtof(conf[2].pitch) };
+    noiseFilterHP.SetFreq(freq);
+    noiseFilterLP.SetFreq(freq);
+    //geiger.SetFreq(mtof(conf[5].pitch));
 
 
     // Filter.
     filterType = static_cast<FilterType>(std::rand() % 3);
-    float freq = RandomizeFrequency(Range::FULL);
-    float res = RandomFloat(0.f, 1.f);
-    float drive = RandomFloat(0.f, 1.f);
+    freq = RandomizeFrequency(Range::FULL);
+    float res{ RandomFloat(0.f, 1.f) };
+    float drive{ RandomFloat(0.f, 1.f) };
     leftFiler.SetFreq(freq);
     leftFiler.SetRes(res);
     leftFiler.SetDrive(drive);
@@ -184,20 +227,21 @@ void Randomize()
 
 void SetPitch(int pitch)
 {
-    hOsc1.SetFreq(mtof(conf[0].pitch + pitch));
-    hOsc2.SetFreq(mtof(conf[1].pitch + pitch));
-    hOsc3.SetFreq(mtof(conf[2].pitch + pitch));
-    hOsc4.SetFreq(mtof(conf[3].pitch + pitch));
-    hOsc5.SetFreq(mtof(conf[4].pitch + pitch));
+    hOsc1.SetFreq(mtof(fclamp(conf[0].pitch + pitch, 0, 120)));
+    hOsc2.SetFreq(mtof(fclamp(conf[3].pitch + pitch, 0, 120)));
+    hOsc3.SetFreq(mtof(fclamp(conf[6].pitch + pitch, 0, 120)));
+    hOsc4.SetFreq(mtof(fclamp(conf[8].pitch + pitch, 0, 120)));
+    hOsc5.SetFreq(mtof(fclamp(conf[10].pitch + pitch, 0, 120)));
 
-    lOsc1.SetFreq(mtof(conf[5].pitch + pitch));
-    lOsc2.SetFreq(mtof(conf[6].pitch + pitch));
-    lOsc3.SetFreq(mtof(conf[7].pitch + pitch));
-    lOsc4.SetFreq(mtof(conf[8].pitch + pitch));
-    lOsc5.SetFreq(mtof(conf[9].pitch + pitch));
+    lOsc1.SetFreq(mtof(fclamp(conf[1].pitch + pitch, 0, 120)));
+    lOsc2.SetFreq(mtof(fclamp(conf[4].pitch + pitch, 0, 120)));
+    lOsc3.SetFreq(mtof(fclamp(conf[7].pitch + pitch, 0, 120)));
+    lOsc4.SetFreq(mtof(fclamp(conf[9].pitch + pitch, 0, 120)));
+    lOsc5.SetFreq(mtof(fclamp(conf[11].pitch + pitch, 0, 120)));
 
-    noiseFilterHP.SetFreq(mtof(conf[10].pitch + pitch));
-    noiseFilterLP.SetFreq(mtof(conf[10].pitch + pitch));
+    float freq{mtof(fclamp(conf[2].pitch + pitch, 0, 120))};
+    noiseFilterHP.SetFreq(freq);
+    noiseFilterLP.SetFreq(freq);
 }
 
 void UpdateKnob1()
@@ -207,6 +251,11 @@ void UpdateKnob1()
 
 void UpdateKnob2()
 {
+}
+
+void UpdateCv1()
+{
+    SetPitch(fmap(cv1.Value(), -63, 63));
 }
 
 void UpdateControls()
@@ -225,13 +274,15 @@ void UpdateControls()
     if (knob1.Value() != knob1Value)
     {
         knob1Value = knob1.Value();
-        UpdateKnob1();
+        //UpdateKnob1();
     }
     if (knob2.Value() != knob2Value)
     {
         knob2Value = knob2.Value();
         UpdateKnob2();
     }
+
+    UpdateCv1();
 }
 
 void UpdateMenu()
@@ -249,7 +300,7 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
         float left{0.f};
         float right{0.f};
 
-        for (int j = 0; j < 12; j++)
+        for (int j = 0; j < kGenerators; j++)
         {
             float sig;
             if (conf[j].active) 
@@ -259,27 +310,29 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
                 }
                 else if (j == 1)
                 {
-                    sig = hOsc2.Process();
+                    sig = lOsc1.Process();
                 }
                 else if (j == 2)
                 {
-                    sig = hOsc3.Process();
+                    sig = noise.Process();
+                    sig = noiseFilterHP.Process(sig);
+                    sig = noiseFilterLP.Process(sig);
                 }
                 else if (j == 3)
                 {
-                    sig = hOsc4.Process();
+                    sig = hOsc2.Process();
                 }
                 else if (j == 4)
                 {
-                    sig = hOsc5.Process();
+                    sig = lOsc2.Process();
                 }
                 else if (j == 5)
                 {
-                    sig = lOsc1.Process();
+                    //sig = geiger.Process();
                 }
                 else if (j == 6)
                 {
-                    sig = lOsc2.Process();
+                    sig = hOsc3.Process();
                 }
                 else if (j == 7)
                 {
@@ -287,23 +340,19 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
                 }
                 else if (j == 8)
                 {
-                    sig = lOsc4.Process();
+                    sig = hOsc4.Process();
                 }
                 else if (j == 9)
                 {
-                    sig = lOsc5.Process();
+                    sig = lOsc4.Process();
                 }
                 else if (j == 10)
                 {
-                    sig = noise.Process();
-                    noiseFilterHP.Process(sig);
-                    sig = noiseFilterHP.High();
-                    noiseFilterLP.Process(sig);
-                    sig = noiseFilterLP.Low();
+                    sig = hOsc5.Process();
                 }
                 else if (j == 11)
                 {
-                    sig = geiger.Process();
+                    sig = lOsc5.Process();
                 }
 
                 left += sig * conf[j].volume * conf[j].pan;
@@ -367,34 +416,36 @@ int main(void)
     hOsc1.SetAmp(1.f);
 
     hOsc2.Init(sampleRate);
-    hOsc1.SetWaveform(Oscillator::WAVE_SIN);
-    hOsc2.SetAmp(1.f);
 
     hOsc3.Init(sampleRate);
     hOsc3.SetWaveform(BlOsc::WAVE_TRIANGLE);
     hOsc3.SetAmp(1.f);
 
     hOsc4.Init(sampleRate);
+    hOsc4.SetWaveform(BlOsc::WAVE_SQUARE);
+    hOsc4.SetAmp(1.f);
 
     hOsc5.Init(sampleRate);
-    hOsc5.SetWaveshape(1.f);
+    hOsc5.SetWaveform(Oscillator::WAVE_SIN);
+    hOsc5.SetAmp(1.f);
 
     lOsc1.Init(sampleRate);
     lOsc1.SetWaveform(Oscillator::WAVE_SIN);
     lOsc1.SetAmp(1.f);
 
     lOsc2.Init(sampleRate);
-    lOsc2.SetWaveform(Oscillator::WAVE_SIN);
-    lOsc2.SetAmp(1.f);
 
     lOsc3.Init(sampleRate);
     lOsc3.SetWaveform(BlOsc::WAVE_TRIANGLE);
     lOsc3.SetAmp(1.f);
 
     lOsc4.Init(sampleRate);
+    lOsc4.SetWaveform(BlOsc::WAVE_SQUARE);
+    lOsc4.SetAmp(1.f);
 
     lOsc5.Init(sampleRate);
-    lOsc5.SetWaveshape(1.f);
+    lOsc5.SetWaveform(Oscillator::WAVE_SIN);
+    lOsc5.SetAmp(1.f);
 
     noise.Init();
     noise.SetAmp(1.f);
