@@ -1,3 +1,4 @@
+#include <time.h>
 #include "kxmx_bluemchen.h"
 #include "Synthesis/blosc.h"
 #include "Synthesis/oscillator.h"
@@ -60,9 +61,9 @@ float sampleRate;
 
 constexpr int kGenerators{ 12 };
 
-Adsr envelopes[kGenerators];
+//Adsr envelopes[kGenerators];
 
-bool envelopeGate{ false };
+//bool envelopeGate{ false };
 
 ReverbSc DSY_SDRAM_BSS reverb;
 DelayLine<float, MAX_DELAY> DSY_SDRAM_BSS leftDelayLine;
@@ -89,8 +90,8 @@ struct delay
 delay leftDelay;
 delay rightDelay;
 
-DelayLine<float, MAX_DELAY> DSY_SDRAM_BSS resoPoleDelayLine;
-
+DelayLine<float, MAX_DELAY> DSY_SDRAM_BSS leftResoPoleDelayLine[3];
+DelayLine<float, MAX_DELAY> DSY_SDRAM_BSS rightResoPoleDelayLine[3];
 Resonator resonator;
 
 enum class Range
@@ -209,12 +210,13 @@ void Randomize()
         if (i >= half && !active && actives < half) {
             active = true;
         }
+        active = true;
         generatorsConf[i].active = active;
         if (active) {
             ++actives;
         }
         generatorsConf[i].pan = RandomFloat(0.f, 1.f);
-        generatorsConf[i].volume = RandomFloat(0.3f, 0.5f);
+        generatorsConf[i].volume = 1.f; // RandomFloat(0.3f, 0.5f);
 
         if (0 == i || 3 == i || 6 == i || 8 == i || 10 == i)
         {
@@ -234,12 +236,12 @@ void Randomize()
         envelopes[i].SetTime(ADSR_SEG_DECAY, RandomFloat(0.f, 2.f));
         envelopes[i].SetTime(ADSR_SEG_RELEASE, RandomFloat(0.f, 2.f));
         envelopes[i].SetSustainLevel(RandomFloat(0.f, 1.f));
-        */
 
         envelopes[i].SetAttackTime(0.f);
         envelopes[i].SetDecayTime(0.1f);
         envelopes[i].SetSustainLevel(1.f);
         envelopes[i].SetReleaseTime(0.f);
+        */
     }
     for (int i = 0; i < kGenerators; i++)
     {
@@ -284,7 +286,7 @@ void Randomize()
     //geiger.SetFreq(mtof(conf[5].pitch));
 
     // Filter.
-    effectsConf[0].active = true; //1 == std::rand() % 2;
+    effectsConf[0].active = false; //1 == std::rand() % 2;
     effectsConf[0].dryWet = RandomFloat(0.f, 1.f);
     filterType = static_cast<FilterType>(std::rand() % 3);
     int pitch;
@@ -316,18 +318,34 @@ void Randomize()
     rightFilter.SetDrive(drive);
 
     // Resonator.
-    effectsConf[1].active = false; //1 == std::rand() % 2;
-    effectsConf[1].dryWet = RandomFloat(0.f, 1.f);
+    effectsConf[1].active = true; //1 == std::rand() % 2;
+    effectsConf[1].dryWet = 1.f; RandomFloat(0.f, 1.f);
+    /*
+    resonator.SetDamp(RandomFloat(20.f, sampleRate / 3.f));
+    resonator.SetDecay(RandomFloat(0.f, 1.f));
+    resonator.SetDetune(RandomFloat(0.f, 0.07f));
+    resonator.SetReso(RandomFloat(0.f, 0.4f));
+    resonator.SetPitch(0, RandomPitch(Range::FULL));
+    resonator.SetPitch(1, RandomPitch(Range::FULL));
+    resonator.SetPitch(2, RandomPitch(Range::FULL));
+    */
+    resonator.SetDamp(500.f);
+    resonator.SetDecay(0.f);
+    resonator.SetDetune(0.f);
+    resonator.SetReso(0.f);
+    resonator.SetPitch(0, 60.f);
+    resonator.SetPitch(1, 60.f);
+    resonator.SetPitch(2, 60.f);
 
     // Delay.
-    effectsConf[2].active = true; //1 == std::rand() % 2;
+    effectsConf[2].active = false; //1 == std::rand() % 2;
     effectsConf[2].dryWet = RandomFloat(0.f, 1.f);
     effectsConf[2].param1 = RandomFloat(0.f, 1.f);
     leftDelay.delayTarget = RandomFloat(sampleRate * .05f, MAX_DELAY);
     rightDelay.delayTarget = RandomFloat(sampleRate * .05f, MAX_DELAY);
 
     // Reverb.
-    effectsConf[3].active = true; //1 == std::rand() % 2;
+    effectsConf[3].active = false; //1 == std::rand() % 2;
     effectsConf[3].dryWet = RandomFloat(0.f, 1.f);
     float fb{RandomFloat(0.f, 1.f)};
     reverb.SetFeedback(fb);
@@ -381,7 +399,7 @@ void UpdateCv1()
     // 0-5v -> 5 octaves
     float voct = fmap(cv1.Value(), 0.f, 60.f);
     SetPitch(voct);
-    envelopeGate = true;
+    //envelopeGate = true;
 }
 
 void UpdateControls()
@@ -397,6 +415,15 @@ void UpdateControls()
     cv1.Process();
     cv2.Process();
 
+    resonator.SetDecay(knob1.Value());
+//    resonator.SetDetune(fmap(knob1.Value(), 0.f, 0.07f));
+//    resonator.SetReso(fmap(knob1.Value(), 0.f, 0.4f));
+    //resonator.SetPitch(0, fmap(knob1.Value(), 30.f, 60.f));
+    //resonator.SetPitch(1, fmap(knob1.Value(), 20.f, 40.f));
+    //resonator.SetPitch(2, fmap(knob1.Value(), 40.f, 80.f));
+    //resonator.SetDamp(fmap(knob2.Value(), 40.f, sampleRate / 3.f));
+
+    /*
     if (knob1.Value() != knob1Value)
     {
         knob1Value = knob1.Value();
@@ -409,6 +436,7 @@ void UpdateControls()
     }
 
     UpdateCv1();
+    */
 }
 
 void UpdateMenu()
@@ -487,7 +515,6 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
                 right += sig * generatorsConf[j].volume * generatorsConf[j].pan; // * envelopes[j].Process(envelopeGate);
             }
         }
-
         // Effects.
         float leftW{ 0.f };
         float rightW{ 0.f };
@@ -517,7 +544,7 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
                 break;
             }
             left = effectsConf[0].dryWet * leftW * .3f + (1.0f - effectsConf[0].dryWet) * left;
-            right = effectsConf[0].dryWet * rightW * .3f + (1.0f - effectsConf[0].dryWet) * left;
+            right = effectsConf[0].dryWet * rightW * .3f + (1.0f - effectsConf[0].dryWet) * right;
         }
 
         // Resonator.
@@ -525,8 +552,8 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
             leftW = left;
             rightW = right;
             resonator.Process(leftW, rightW);
-            left = effectsConf[1].dryWet * leftW * .3f + (1.0f - effectsConf[1].dryWet) * left;
-            right = effectsConf[1].dryWet * rightW * .3f + (1.0f - effectsConf[1].dryWet) * left;
+            left = effectsConf[1].dryWet * SoftClip(leftW) * .3f + (1.0f - effectsConf[1].dryWet) * left;
+            right = effectsConf[1].dryWet * SoftClip(rightW) * .3f + (1.0f - effectsConf[1].dryWet) * right;
         }
 
         // Delay.
@@ -534,14 +561,14 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
             leftW = leftDelay.Process(effectsConf[2].param1, left);
             rightW = rightDelay.Process(effectsConf[2].param1, right);
             left = effectsConf[2].dryWet * leftW * .3f + (1.0f - effectsConf[2].dryWet) * left;
-            right = effectsConf[2].dryWet * rightW * .3f + (1.0f - effectsConf[2].dryWet) * left;
+            right = effectsConf[2].dryWet * rightW * .3f + (1.0f - effectsConf[2].dryWet) * right;
         }
 
         // Reverb.
         if (effectsConf[3].active) {
             reverb.Process(left, right, &leftW, &rightW);
             left = effectsConf[3].dryWet * leftW * .3f + (1.0f - effectsConf[3].dryWet) * left;
-            right = effectsConf[3].dryWet * rightW * .3f + (1.0f - effectsConf[3].dryWet) * left;
+            right = effectsConf[3].dryWet * rightW * .3f + (1.0f - effectsConf[3].dryWet) * right;
         }
 
         OUT_L[i] = left;
@@ -610,25 +637,29 @@ int main(void)
 
     for (int i = 0; i < kGenerators; i++)
     {
-        envelopes[i].Init(sampleRate);
+        //envelopes[i].Init(sampleRate);
     }
 
     leftFilter.Init(sampleRate);
     rightFilter.Init(sampleRate);
 
-    resoPoleDelayLine.Init();
-    resonator.Init(sampleRate, &resoPoleDelayLine);
+    for (int i = 0; i < 3; i++)
+    {
+        leftResoPoleDelayLine[i].Init();
+        rightResoPoleDelayLine[i].Init();
+    }
+    
+    resonator.Init(sampleRate, &leftResoPoleDelayLine, &rightResoPoleDelayLine);
 
     leftDelayLine.Init();
     rightDelayLine.Init();
     leftDelay.del = &leftDelayLine;
     rightDelay.del = &rightDelayLine;
 
-    float time = fmap(0.5f, 0.3f, 0.99f);
-    float damp = fmap(0.f, 1000.f, 19000.f, Mapping::LOG);
-    reverb.SetFeedback(time);
-    reverb.SetLpFreq(damp);
+    reverb.Init(sampleRate);
 
+    // New seed.
+    srand(time(NULL));
     Randomize();
 
     bluemchen.StartAudio(AudioCallback);
@@ -637,5 +668,6 @@ int main(void)
     {
         UpdateControls();
         UpdateMenu();
+        //UpdateOled();
     }
 }

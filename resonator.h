@@ -14,45 +14,65 @@ namespace orchard
 
     struct Pole
     {
-        DelayLine<float, MAX_DELAY> *del;
+        DelayLine<float, MAX_DELAY> *leftDel;
+        DelayLine<float, MAX_DELAY> *rightDel;
         float currentDelay;
         float delayTarget;
 
         Svf filt;
 
-        float damp{0.f};   // 0.0 and sample_rate / 3
-        float reso{0.f};   // 0.0 : 0.4
-        float decay{0.f};  // 0.0 : ?
-        float detune{0.f}; // 0.0 : 0.07
-        float pitch{60.f};
+        float sampleRate_;
+        float decay_{0.f};  // 0.0 : ?
+        float detune_{0.f}; // 0.0 : 0.07
+        float pitch_{60.f};
 
-        void Init(float sampleRate, DelayLine<float, MAX_DELAY> *del)
+        void Init(float sampleRate, DelayLine<float, MAX_DELAY> *lDel, DelayLine<float, MAX_DELAY> *rDel)
         {
-            //resoPoleDelayLine.Init();
-            //del = &resoPoleDelayLine;
-
-            filt.Init(sampleRate);
-            filt.SetFreq(damp);
-            filt.SetRes(reso);
-
-            pitch *= -0.5017f;
-            pitch += 17.667f;
-            pitch -= detune;
-            delayTarget = pow10f(pitch / 20.0f); // ms
-            delayTarget *= sampleRate * 0.001f;  // ms to samples ?
+            leftDel = lDel;
+            rightDel = rDel;
+            sampleRate_ = sampleRate;
+            filt.Init(sampleRate_);
         }
 
-        float Process(float in)
+        void SetDetune(float detune)
+        {
+            detune_ = detune;
+            pitch_ -= detune_;
+            delayTarget = pow10f(pitch_ / 20.0f); // ms
+            delayTarget *= sampleRate_ * 0.001f;  // ms to samples ?
+        }
+
+        void SetDamp(float damp)
+        {
+            filt.SetFreq(pitch_ + damp);
+        }
+
+        void SetPitch(float pitch)
+        {
+            pitch_ = pitch;
+            pitch_ *= -0.5017f;
+            pitch_ += 17.667f;
+            pitch_ -= detune_;
+            delayTarget = pow10f(pitch_ / 20.0f); // ms
+            delayTarget *= sampleRate_ * 0.001f; // ms to samples ?
+        }
+
+        void Process(float &left, float &right)
         {
             fonepole(currentDelay, delayTarget, .0002f);
-            del->SetDelay(currentDelay);
+            leftDel->SetDelay(currentDelay);
+            rightDel->SetDelay(currentDelay);
 
-            float sig = del->Read();
-            filt.Process(sig);
-            sig = filt.Low();
-            del->Write((decay * sig) + in);
-
-            return sig;
+            float leftW = leftDel->Read();
+            float rightW = rightDel->Read();
+            filt.Process(leftW);
+            leftW = filt.Low();
+            filt.Process(rightW);
+            rightW = filt.Low();
+            leftDel->Write((decay_ * leftW) + left);
+            rightDel->Write((decay_ * rightW) + right); 
+            left = leftW;
+            right = rightW;
         }
     };
 
@@ -63,21 +83,52 @@ namespace orchard
         Resonator() {}
         ~Resonator() {}
 
-        void Init(float sampleRate, DelayLine<float, MAX_DELAY> *del)
+        void Init(float sampleRate, DelayLine<float, MAX_DELAY> (*leftDel)[3], DelayLine<float, MAX_DELAY> (*rightDel)[3])
         {
             for (int i = 0; i < kPoles; i++)
             {
-                poles_[i].Init(sampleRate, del);
+                poles_[i].Init(sampleRate, leftDel[i], rightDel[i]);
             }
         }
-        void SetDamp(float damp) { damp_ = damp; }
-        void SetReso(float reso) { reso_ = reso; }
-        void SetDecay(float decay) { decay_ = decay; }
-        void SetDetune(float detune) { detune_ = detune; }
-        void SetPitch(int pole, float pitch) { pitches_[pole] = pitch; }
+        void SetDamp(float damp) 
+        {
+            for (int i = 0; i < kPoles; i++)
+            {
+                poles_[i].SetDamp(damp);
+            }
+        }
+        void SetReso(float reso) 
+        {
+            for (int i = 0; i < kPoles; i++)
+            {
+                poles_[i].filt.SetRes(reso);
+            }
+        }
+        void SetDecay(float decay) 
+        {
+            for (int i = 0; i < kPoles; i++)
+            {
+                poles_[i].decay_ = decay;
+            }
+        }
+        void SetDetune(float detune) 
+        {
+            for (int i = 0; i < kPoles; i++)
+            {
+                poles_[i].SetDetune(detune);
+            }
+        }
+        void SetPitch(int pole, float pitch) 
+        {
+            poles_[pole].SetPitch(pitch);
+        }
 
-        void Process(float &left, float &right) {
-            
+        void Process(float &left, float &right) 
+        {
+            for (int i = 0; i < kPoles; i++)
+            {
+                poles_[i].Process(left, right);
+            }
         }
 
     private:
