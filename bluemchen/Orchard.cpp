@@ -12,11 +12,14 @@
 #include "Utility/delayline.h"
 #include "Utility/dsp.h"
 
+#include "../resonator.h"
+
 #define MAX_DELAY static_cast<size_t>(48000 * 1.f)
 
 using namespace kxmx;
 using namespace daisy;
 using namespace daisysp;
+using namespace orchard;
 
 Bluemchen bluemchen;
 
@@ -65,8 +68,6 @@ ReverbSc DSY_SDRAM_BSS reverb;
 DelayLine<float, MAX_DELAY> DSY_SDRAM_BSS leftDelayLine;
 DelayLine<float, MAX_DELAY> DSY_SDRAM_BSS rightDelayLine;
 
-
-
 struct delay
 {
     DelayLine<float, MAX_DELAY> *del;
@@ -75,7 +76,6 @@ struct delay
 
     float Process(float feedback, float in)
     {
-        //set delay times
         fonepole(currentDelay, delayTarget, .0002f);
         del->SetDelay(currentDelay);
 
@@ -91,50 +91,7 @@ delay rightDelay;
 
 DelayLine<float, MAX_DELAY> DSY_SDRAM_BSS resoPoleDelayLine;
 
-struct resoPole
-{
-    DelayLine<float, MAX_DELAY> *del;
-    float currentDelay;
-    float delayTarget;
-
-    Svf filt;
-
-    float damp{ 0.f }; // 0.0 and sample_rate / 3
-    float reso{ 0.f }; // 0.0 : 0.4
-    float decay{ 0.f }; // 0.0 : ?
-    float detune{ 0.f }; // 0.0 : 0.07
-    float pitch{ 60.f };
-
-    resoPoleDelayLine.Init();
-    del = &resoPoleDelayLine;
-
-    filt.Init(sampleRate);
-    filt.SetFreq(damp);
-    filt.SetRes(reso);
-
-    pitch *= -0.5017f;
-    pitch += 17.667f;
-    pitch -= detune;
-    delayTarget = pow10f(pitch/20.0f); // ms
-    delayTarget *= sampleRate * 0.001f; // ms to samples ?
-
-    float Process(float in)
-    {
-        //set delay times
-        fonepole(currentDelay, delayTarget, .0002f);
-        del->SetDelay(currentDelay);
-
-        float sig = del->Read();
-        filt.Process(sig);
-        sig = filt.Low();
-        del->Write((feedback * sig) + in);
-
-        return sig;
-    }
-};
-
-
-
+Resonator resonator;
 
 enum class Range
 {
@@ -565,6 +522,9 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
 
         // Resonator.
         if (effectsConf[1].active) {
+            leftW = left;
+            rightW = right;
+            resonator.Process(leftW, rightW);
             left = effectsConf[1].dryWet * leftW * .3f + (1.0f - effectsConf[1].dryWet) * left;
             right = effectsConf[1].dryWet * rightW * .3f + (1.0f - effectsConf[1].dryWet) * left;
         }
@@ -655,6 +615,9 @@ int main(void)
 
     leftFilter.Init(sampleRate);
     rightFilter.Init(sampleRate);
+
+    resoPoleDelayLine.Init();
+    resonator.Init(sampleRate, &resoPoleDelayLine);
 
     leftDelayLine.Init();
     rightDelayLine.Init();
