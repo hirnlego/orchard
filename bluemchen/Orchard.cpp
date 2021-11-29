@@ -182,28 +182,29 @@ float RandomFloat(float min, float max)
 int RandomPitch(Range range)
 {
     int rnd;
-
-    int high[4]{0, 3, 5, 7};
-    int low[4]{-7, -5, -3, 0};
-    int full[7]{-7, -5, -3, 0, 3, 5, 7};
+    
+    // Phrygian h-w-w-w-h-w-w
+    int high[8]{0, 1, 3, 5, 7, 8, 10, 12};
+    int low[8]{-12, -11, -9, -7, -5, -4, -2, 0};
+    int full[15]{-12, -11, -9, -7, -5, -4, -2, 0, 1, 3, 5, 7, 8, 10, 12};
 
     if (Range::HIGH == range)
     {
         // (midi 66-72)
         //rnd = RandomFloat(42, 72);
-        rnd = high[static_cast<int>(RandomFloat(0, 3))];
+        rnd = high[std::rand() % sizeof(high)];
     }
     else if (Range::LOW == range)
     {
         // (midi 36-65)
         //rnd = RandomFloat(12, 41);
-        rnd = low[static_cast<int>(RandomFloat(0, 3))];
+        rnd = low[std::rand() % sizeof(low)];
     }
     else
     {
         // (midi 36-96)
         //rnd = RandomFloat(12, 72);
-        rnd = full[static_cast<int>(RandomFloat(0, 6))];
+        rnd = full[std::rand() % sizeof(full)];
     }
 
     return rnd;
