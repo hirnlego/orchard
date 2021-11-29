@@ -183,20 +183,27 @@ int RandomPitch(Range range)
 {
     int rnd;
 
+    int high[4]{0, 3, 5, 7};
+    int low[4]{-7, -5, -3, 0};
+    int full[7]{-7, -5, -3, 0, 3, 5, 7};
+
     if (Range::HIGH == range)
     {
         // (midi 66-72)
-        rnd = RandomFloat(42, 72);
+        //rnd = RandomFloat(42, 72);
+        rnd = high[static_cast<int>(RandomFloat(0, 3))];
     }
     else if (Range::LOW == range)
     {
         // (midi 36-65)
-        rnd = RandomFloat(12, 41);
+        //rnd = RandomFloat(12, 41);
+        rnd = low[static_cast<int>(RandomFloat(0, 3))];
     }
     else
     {
         // (midi 36-96)
-        rnd = RandomFloat(12, 72);
+        //rnd = RandomFloat(12, 72);
+        rnd = full[static_cast<int>(RandomFloat(0, 6))];
     }
 
     return rnd;
@@ -246,10 +253,10 @@ void Randomize()
         envelopes[i].SetSustainLevel(RandomFloat(0.f, 1.f));
         */
 
-        envelopes[i].SetAttackTime(0.f);
+        envelopes[i].SetAttackTime(0.1f);
         envelopes[i].SetDecayTime(0.1f);
         envelopes[i].SetSustainLevel(1.f);
-        envelopes[i].SetReleaseTime(0.f);
+        envelopes[i].SetReleaseTime(0.1f);
 
         //generatorsConf[i].ringSource = std::floor(RandomFloat(0.f, kGenerators - 1));
     }
@@ -358,7 +365,7 @@ void Randomize()
     }
 
     // Reverb.
-    effectsConf[3].active = false; //1 == std::rand() % 2;
+    effectsConf[3].active = true; //1 == std::rand() % 2;
     if (effectsConf[3].active) {
         effectsConf[3].dryWet = RandomFloat(0.f, 1.f);
         float fb{RandomFloat(0.f, 0.9f)};
@@ -412,7 +419,7 @@ void UpdateKnob2()
 void UpdateCv1()
 {
     // 0-5v -> 5 octaves
-    float voct = fmap(cv1.Value(), 0.f, 60.f);
+    float voct = fmap(cv1.Value(), 24.f, 84.f);
     SetPitch(voct);
     //envelopeGate = true;
 }
@@ -432,7 +439,7 @@ void UpdateControls()
 
     //envelopeGate = true;
     envelopeGate = cv1.Value() > 0.5f;
-    SetPitch(fmap(cv2.Value(), -30.f, 30.f));
+    SetPitch(fmap(cv2.Value(), 24.f, 84.f));
 
     //resonator.SetDecay(fmap(knob1.Value(), 0.f, 0.5f));
     //resonator.SetDetune(fmap(knob1.Value(), 0.f, 1.f));
