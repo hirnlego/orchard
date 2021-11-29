@@ -10,6 +10,7 @@
 #include "Filters/atone.h"
 #include "Filters/tone.h"
 #include "Effects/reverbsc.h"
+#include "Dynamics/compressor.h"
 #include "Utility/delayline.h"
 #include "Utility/dsp.h"
 
@@ -57,13 +58,15 @@ Svf rightFilter;
 ATone noiseFilterHP;
 Tone noiseFilterLP;
 
+Compressor compressor;
+
 float sampleRate;
 
 constexpr int kGenerators{ 12 };
 
-//Adsr envelopes[kGenerators];
+Adsr envelopes[kGenerators];
 
-//bool envelopeGate{ false };
+bool envelopeGate{ false };
 
 ReverbSc DSY_SDRAM_BSS reverb;
 DelayLine<float, MAX_DELAY> DSY_SDRAM_BSS leftDelayLine;
@@ -236,12 +239,12 @@ void Randomize()
         envelopes[i].SetTime(ADSR_SEG_DECAY, RandomFloat(0.f, 2.f));
         envelopes[i].SetTime(ADSR_SEG_RELEASE, RandomFloat(0.f, 2.f));
         envelopes[i].SetSustainLevel(RandomFloat(0.f, 1.f));
+        */
 
         envelopes[i].SetAttackTime(0.f);
         envelopes[i].SetDecayTime(0.1f);
         envelopes[i].SetSustainLevel(1.f);
         envelopes[i].SetReleaseTime(0.f);
-        */
     }
     for (int i = 0; i < kGenerators; i++)
     {
@@ -286,7 +289,7 @@ void Randomize()
     //geiger.SetFreq(mtof(conf[5].pitch));
 
     // Filter.
-    effectsConf[0].active = false; //1 == std::rand() % 2;
+    effectsConf[0].active = true; //1 == std::rand() % 2;
     effectsConf[0].dryWet = RandomFloat(0.f, 1.f);
     filterType = static_cast<FilterType>(std::rand() % 3);
     int pitch;
@@ -319,23 +322,24 @@ void Randomize()
 
     // Resonator.
     effectsConf[1].active = true; //1 == std::rand() % 2;
-    effectsConf[1].dryWet = 1.f; RandomFloat(0.f, 1.f);
-    /*
-    resonator.SetDamp(RandomFloat(20.f, sampleRate / 3.f));
-    resonator.SetDecay(RandomFloat(0.f, 1.f));
+    effectsConf[1].dryWet = RandomFloat(0.f, 1.f);
+    resonator.SetDecay(RandomFloat(0.f, 0.5f));
     resonator.SetDetune(RandomFloat(0.f, 0.07f));
     resonator.SetReso(RandomFloat(0.f, 0.4f));
     resonator.SetPitch(0, RandomPitch(Range::FULL));
     resonator.SetPitch(1, RandomPitch(Range::FULL));
     resonator.SetPitch(2, RandomPitch(Range::FULL));
-    */
-    resonator.SetDamp(500.f);
-    resonator.SetDecay(0.f);
+    resonator.SetDamp(RandomFloat(100.f, 5000.f));
+    /*
+    effectsConf[1].dryWet = 1.f;
+    resonator.SetDecay(0.4f);
     resonator.SetDetune(0.f);
-    resonator.SetReso(0.f);
+    resonator.SetReso(0.4f);
     resonator.SetPitch(0, 60.f);
     resonator.SetPitch(1, 60.f);
     resonator.SetPitch(2, 60.f);
+    resonator.SetDamp(500.f);
+*/
 
     // Delay.
     effectsConf[2].active = false; //1 == std::rand() % 2;
@@ -349,7 +353,7 @@ void Randomize()
     effectsConf[3].dryWet = RandomFloat(0.f, 1.f);
     float fb{RandomFloat(0.f, 1.f)};
     reverb.SetFeedback(fb);
-    reverb.SetLpFreq(RandomFloat(0.f, sampleRate / 3.f));
+    reverb.SetLpFreq(RandomFloat(0.f, 5000.f));
 }
 
 void SetCharacter(float character)
@@ -415,10 +419,13 @@ void UpdateControls()
     cv1.Process();
     cv2.Process();
 
-    resonator.SetDecay(knob1.Value());
-//    resonator.SetDetune(fmap(knob1.Value(), 0.f, 0.07f));
-//    resonator.SetReso(fmap(knob1.Value(), 0.f, 0.4f));
-    //resonator.SetPitch(0, fmap(knob1.Value(), 30.f, 60.f));
+    envelopeGate = cv1.Value() > 0.5f;
+    SetPitch(fmap(cv2.Value(), -30.f, 30.f));
+
+    //resonator.SetDecay(fmap(knob1.Value(), 0.f, 0.5f));
+    //resonator.SetDetune(fmap(knob1.Value(), 0.f, 1.f));
+    //resonator.SetReso(fmap(knob1.Value(), 0.f, 0.4f));
+    //resonator.SetPitch(0, fmap(knob2.Value(), 30.f, 60.f));
     //resonator.SetPitch(1, fmap(knob1.Value(), 20.f, 40.f));
     //resonator.SetPitch(2, fmap(knob1.Value(), 40.f, 80.f));
     //resonator.SetDamp(fmap(knob2.Value(), 40.f, sampleRate / 3.f));
@@ -511,8 +518,8 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
                     sig = lOsc5.Process();
                 }
 
-                left += sig * generatorsConf[j].volume * (1 - generatorsConf[j].pan); // * envelopes[j].Process(envelopeGate);
-                right += sig * generatorsConf[j].volume * generatorsConf[j].pan; // * envelopes[j].Process(envelopeGate);
+                left += sig * generatorsConf[j].volume * (1 - generatorsConf[j].pan) * envelopes[j].Process(envelopeGate);
+                right += sig * generatorsConf[j].volume * generatorsConf[j].pan * envelopes[j].Process(envelopeGate);
             }
         }
         // Effects.
@@ -571,8 +578,8 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
             right = effectsConf[3].dryWet * rightW * .3f + (1.0f - effectsConf[3].dryWet) * right;
         }
 
-        OUT_L[i] = left;
-        OUT_R[i] = right;
+        OUT_L[i] = left; //compressor.Process(left);
+        OUT_R[i] = right; //compressor.Process(right);
     }
 }
 
@@ -637,7 +644,7 @@ int main(void)
 
     for (int i = 0; i < kGenerators; i++)
     {
-        //envelopes[i].Init(sampleRate);
+        envelopes[i].Init(sampleRate);
     }
 
     leftFilter.Init(sampleRate);
@@ -648,8 +655,10 @@ int main(void)
         leftResoPoleDelayLine[i].Init();
         rightResoPoleDelayLine[i].Init();
     }
-    
-    resonator.Init(sampleRate, &leftResoPoleDelayLine, &rightResoPoleDelayLine);
+    resonator.Init(sampleRate);
+    resonator.AddPole(&leftResoPoleDelayLine[0], &rightResoPoleDelayLine[0]);
+    resonator.AddPole(&leftResoPoleDelayLine[1], &rightResoPoleDelayLine[1]);
+    resonator.AddPole(&leftResoPoleDelayLine[2], &rightResoPoleDelayLine[2]);
 
     leftDelayLine.Init();
     rightDelayLine.Init();
@@ -657,6 +666,14 @@ int main(void)
     rightDelay.del = &rightDelayLine;
 
     reverb.Init(sampleRate);
+
+/*
+    compressor.Init(sampleRate);
+    compressor.SetAttack(0.1f);
+    compressor.SetRatio(10.f);
+    compressor.SetThreshold(-6.f);
+    compressor.SetMakeup(6.f);
+*/
 
     // New seed.
     srand(time(NULL));
@@ -668,6 +685,6 @@ int main(void)
     {
         UpdateControls();
         UpdateMenu();
-        //UpdateOled();
+        UpdateOled();
     }
 }
