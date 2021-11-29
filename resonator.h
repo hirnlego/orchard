@@ -75,23 +75,30 @@ namespace orchard
             SetFrequency();
         }
 
-        void Process(float &left, float &right)
+        float ProcessLeft(float in)
         {
             fonepole(currentLeftDelay, leftDelayTarget, .0002f);
-            fonepole(currentRightDelay, rightDelayTarget, .0002f);
             leftDel->SetDelay(currentLeftDelay);
-            rightDel->SetDelay(currentRightDelay);
 
             float leftW = leftDel->Read();
-            float rightW = rightDel->Read();
             filt.Process(leftW);
             leftW = filt.Low();
+            leftDel->Write((decay_ * leftW) + in);
+
+            return leftW;
+        }
+
+        float ProcessRight(float in)
+        {
+            fonepole(currentRightDelay, rightDelayTarget, .0002f);
+            rightDel->SetDelay(currentRightDelay);
+
+            float rightW = rightDel->Read();
             filt.Process(rightW);
             rightW = filt.Low();
-            leftDel->Write((decay_ * leftW) + left);
-            rightDel->Write((decay_ * rightW) + right);
-            left += leftW;
-            right += rightW;
+            rightDel->Write((decay_ * rightW) + in);
+
+            return rightW;
         }
     };
 
@@ -146,10 +153,15 @@ namespace orchard
 
         void Process(float &left, float &right)
         {
+            float leftW{0.f};
+            float rightW{0.f};
             for (int i = 0; i < nPoles_; i++)
             {
-                poles_[i].Process(left, right);
+                leftW += poles_[i].ProcessLeft(left) * (1.f / nPoles_);
+                rightW += poles_[i].ProcessRight(right) * (1.f / nPoles_);
             }
+            left = leftW;
+            right = rightW;
         }
 
     private:
