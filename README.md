@@ -20,7 +20,6 @@ For each oscillator and generator can be specified:
 - panning
 - pitch (in the given range)
 - "character", when present (e.g. pulse width)
-- bend (? check Aero 2 here https://www.native-instruments.com/en/reaktor-community/reaktor-user-library/entry/show/3279/)
 - ring modulation matrix (it may be possible to specify the modulating osc)
 
 For all the oscillators and the noise generator only:
@@ -38,9 +37,8 @@ Other features:
     - pan
     - pitch 
     - "character"
-    - bend
-    - envelope, ring mod and FXs (in Aero 2 under a generic "params") 
-
+    - envelope, ring mod and FXs
+    
 Stereo effects in series:
 
 - 2-poles filter followed by a saturator
