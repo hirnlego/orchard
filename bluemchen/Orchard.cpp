@@ -246,6 +246,23 @@ int RandomPitch(Range range)
 bool useEnvelope{false};
 bool randomize{false};
 
+void SetPitch(float pitch)
+{
+    hOsc1.SetFreq(CalcFrequency(generatorsConf[0].pitch, pitch));
+    hOsc2.SetFreq(CalcFrequency(generatorsConf[2].pitch, pitch));
+    hOsc3.SetFreq(CalcFrequency(generatorsConf[4].pitch, pitch));
+    hOsc4.SetFreq(CalcFrequency(generatorsConf[6].pitch, pitch));
+
+    lOsc1.SetFreq(CalcFrequency(generatorsConf[1].pitch, pitch));
+    lOsc2.SetFreq(CalcFrequency(generatorsConf[3].pitch, pitch));
+    lOsc3.SetFreq(CalcFrequency(generatorsConf[5].pitch, pitch));
+    lOsc4.SetFreq(CalcFrequency(generatorsConf[7].pitch, pitch));
+
+    float f{CalcFrequency(generatorsConf[8].pitch, pitch)};
+    noiseFilterHP.SetFreq(f);
+    noiseFilterLP.SetFreq(f);
+}
+
 void Randomize()
 {
     //float volume{ 0.f };
@@ -302,34 +319,36 @@ void Randomize()
         }
     }
 
-    hOsc1.SetFreq(mtof(generatorsConf[0].pitch));
+    //hOsc1.SetFreq(mtof(generatorsConf[0].pitch));
 
-    hOsc2.SetFreq(mtof(generatorsConf[2].pitch));
+    //hOsc2.SetFreq(mtof(generatorsConf[2].pitch));
     hOsc2.SetWaveshape(RandomFloat(0.f, 1.f));
     hOsc2.SetPW(RandomFloat(-1.f, 1.f));
 
-    hOsc3.SetFreq(mtof(generatorsConf[4].pitch));
+    //hOsc3.SetFreq(mtof(generatorsConf[4].pitch));
     hOsc3.SetPw(RandomFloat(-1.f, 1.f));
 
-    hOsc4.SetFreq(mtof(generatorsConf[8].pitch));
+    //hOsc4.SetFreq(mtof(generatorsConf[8].pitch));
     hOsc4.SetPw(RandomFloat(-1.f, 1.f));
 
-    lOsc1.SetFreq(mtof(generatorsConf[1].pitch));
+    //lOsc1.SetFreq(mtof(generatorsConf[1].pitch));
 
-    lOsc2.SetFreq(mtof(generatorsConf[3].pitch));
+    //lOsc2.SetFreq(mtof(generatorsConf[3].pitch));
     lOsc2.SetWaveshape(RandomFloat(0.f, 1.f));
     lOsc2.SetPW(RandomFloat(-1.f, 1.f));
 
-    lOsc3.SetFreq(mtof(generatorsConf[5].pitch));
+    //lOsc3.SetFreq(mtof(generatorsConf[5].pitch));
     lOsc3.SetPw(RandomFloat(-1.f, 1.f));
 
-    lOsc4.SetFreq(mtof(generatorsConf[7].pitch));
+    //lOsc4.SetFreq(mtof(generatorsConf[7].pitch));
     lOsc4.SetPw(RandomFloat(-1.f, 1.f));
 
     float freq{ mtof(generatorsConf[8].pitch) };
-    noiseFilterHP.SetFreq(freq);
-    noiseFilterLP.SetFreq(freq);
+    //noiseFilterHP.SetFreq(freq);
+    //noiseFilterLP.SetFreq(freq);
     generatorsConf[8].character = RandomFloat(1.f, 2.f);
+
+    SetPitch(basePitch);
 
     // Filter.
     effectsConf[0].active = true; //1 == std::rand() % 2;
@@ -422,23 +441,6 @@ void SetCharacter(float character)
     lOsc2.SetPW(1.f - character);
     lOsc3.SetPw(character);
     lOsc4.SetPw(character);
-}
-
-void SetPitch(float pitch)
-{
-    hOsc1.SetFreq(CalcFrequency(generatorsConf[0].pitch, pitch));
-    hOsc2.SetFreq(CalcFrequency(generatorsConf[2].pitch, pitch));
-    hOsc3.SetFreq(CalcFrequency(generatorsConf[4].pitch, pitch));
-    hOsc4.SetFreq(CalcFrequency(generatorsConf[6].pitch, pitch));
-
-    lOsc1.SetFreq(CalcFrequency(generatorsConf[1].pitch, pitch));
-    lOsc2.SetFreq(CalcFrequency(generatorsConf[3].pitch, pitch));
-    lOsc3.SetFreq(CalcFrequency(generatorsConf[5].pitch, pitch));
-    lOsc4.SetFreq(CalcFrequency(generatorsConf[7].pitch, pitch));
-
-    float f{CalcFrequency(generatorsConf[8].pitch, pitch)};
-    noiseFilterHP.SetFreq(f);
-    noiseFilterLP.SetFreq(f);
 }
 
 void UpdateKnob1()
