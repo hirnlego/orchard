@@ -10,7 +10,7 @@
 #include "Filters/atone.h"
 #include "Filters/tone.h"
 #include "Effects/reverbsc.h"
-#include "Dynamics/compressor.h"
+#include "Dynamics/balance.h"
 #include "Utility/delayline.h"
 #include "Utility/dsp.h"
 
@@ -55,7 +55,7 @@ Svf rightFilter;
 ATone noiseFilterHP;
 Tone noiseFilterLP;
 
-Compressor compressor;
+Balance balancer;
 
 float sampleRate;
 
@@ -145,6 +145,8 @@ enum class FilterType
 };
 FilterType filterType;
 
+int basePitch;
+
 std::string str{"Starting..."};
 char *cstr{&str[0]};
 
@@ -162,7 +164,7 @@ void UpdateOled()
     bluemchen.display.Fill(false);
 
     Print(std::to_string(static_cast<int>(knob1.Value() * 100)));
-    Print(std::to_string(static_cast<int>(knob2.Value() * 100)), 2);
+    Print(std::to_string(basePitch), 2);
 
     bluemchen.display.Update();
 }
@@ -179,37 +181,69 @@ float RandomFloat(float min, float max)
     return min + static_cast<float>(std::rand()) / (static_cast<float>(RAND_MAX / (max - min)));
 }
 
+enum class Scale
+{
+    IONIAN,
+    DORIAN,
+    PHRYGIAN,
+    LYDIAN,
+    MIXOLYDIAN,
+    AEOLIAN,
+    LOCRIAN,
+    LAST_SCALE,
+};
+constexpr int scaleIntervals{15};
+// Ionian w-w-h-w-w-w-h
+// Dorian   w-h-w-w-w-h-w
+// Phrygian   h-w-w-w-h-w-w
+// Lydian       w-w-w-h-w-w-h
+// Mixolydian     w-w-h-w-w-h-w
+// Aeolian          w-h-w-w-h-w-w
+// Locrian            h-w-w-h-w-w-w
+int scales[static_cast<unsigned int>(Scale::LAST_SCALE)][scaleIntervals]{
+    {-12, -10, -8, -7, -5, -3, -1, 0, 2, 4, 5, 7, 9, 11, 12},
+    {-12, -10, -9, -7, -5, -3, -2, 0, 2, 3, 5, 7, 9, 10, 12},
+    {-12, -11, -9, -7, -5, -4, -2, 0, 1, 3, 5, 7, 8, 10, 12},
+    {-12, -10, -8, -6, -5, -3, -1, 0, 2, 4, 6, 7, 9, 11, 12},
+    {-12, -10, -8, -7, -5, -3, -2, 0, 2, 4, 5, 7, 9, 10, 12},
+    {-12, -10, -9, -7, -5, -4, -2, 0, 2, 3, 5, 7, 8, 10, 12},
+    {-12, -11, -9, -7, -6, -4, -2, 0, 1, 3, 5, 6, 8, 10, 12},
+};
+
+Scale currentScale{Scale::PHRYGIAN};
+
+
 int RandomPitch(Range range)
 {
     int rnd;
     
-    // Phrygian h-w-w-w-h-w-w
-    int high[8]{0, 1, 3, 5, 7, 8, 10, 12};
-    int low[8]{-12, -11, -9, -7, -5, -4, -2, 0};
-    int full[15]{-12, -11, -9, -7, -5, -4, -2, 0, 1, 3, 5, 7, 8, 10, 12};
+    int full[]{-12, -11, -9, -7, -5, -4, -2, 0, 1, 3, 5, 7, 8, 10, 12};
 
     if (Range::HIGH == range)
     {
         // (midi 66-72)
         //rnd = RandomFloat(42, 72);
-        rnd = high[std::rand() % sizeof(high)];
+        int half{static_cast<int>(std::ceil(scaleIntervals / 2))};
+        rnd = full[(half + (std::rand() % half)) - 1];
     }
     else if (Range::LOW == range)
     {
         // (midi 36-65)
         //rnd = RandomFloat(12, 41);
-        rnd = low[std::rand() % sizeof(low)];
+        int half{static_cast<int>(std::ceil(scaleIntervals / 2))};
+        rnd = full[std::rand() % half - 1];
     }
     else
     {
         // (midi 36-96)
         //rnd = RandomFloat(12, 72);
-        rnd = full[std::rand() % sizeof(full)];
+        rnd = full[std::rand() % scaleIntervals];
     }
 
     return rnd;
 }
 
+bool useEnvelope{false};
 bool randomize{false};
 
 void Randomize()
@@ -247,17 +281,17 @@ void Randomize()
             generatorsConf[i].pitch = RandomPitch(Range::FULL);
         }
 
-        /*
         envelopes[i].SetTime(ADSR_SEG_ATTACK, RandomFloat(0.f, 2.f));
         envelopes[i].SetTime(ADSR_SEG_DECAY, RandomFloat(0.f, 2.f));
         envelopes[i].SetTime(ADSR_SEG_RELEASE, RandomFloat(0.f, 2.f));
         envelopes[i].SetSustainLevel(RandomFloat(0.f, 1.f));
-        */
 
+        /*
         envelopes[i].SetAttackTime(0.1f);
         envelopes[i].SetDecayTime(0.1f);
         envelopes[i].SetSustainLevel(1.f);
         envelopes[i].SetReleaseTime(0.1f);
+        */
 
         //generatorsConf[i].ringSource = std::floor(RandomFloat(0.f, kGenerators - 1));
     }
@@ -438,9 +472,15 @@ void UpdateControls()
     cv1.Process();
     cv2.Process();
 
-    //envelopeGate = true;
-    envelopeGate = cv1.Value() > 0.5f;
-    SetPitch(fmap(cv2.Value(), 24.f, 84.f));
+    envelopeGate = useEnvelope ? cv1.Value() > 0.5f : true;
+    //SetPitch(fmap(cv2.Value(), 24.f, 84.f));
+
+    if (std::abs(knob2Value - knob2.Value()) > 0.01f)
+    {
+        basePitch = 24 + knob2.Value() * 60;
+        knob2Value = knob2.Value();
+        SetPitch(basePitch);
+    }
 
     //resonator.SetDecay(fmap(knob1.Value(), 0.f, 0.5f));
     //resonator.SetDetune(fmap(knob1.Value(), 0.f, 1.f));
@@ -456,11 +496,11 @@ void UpdateControls()
         knob1Value = knob1.Value();
         UpdateKnob1();
     }
-    if (knob2.Value() != knob2Value)
-    {
-        knob2Value = knob2.Value();
-        UpdateKnob2();
-    }
+        if (knob2.Value() != knob2Value)
+        {
+            knob2Value = knob2.Value();
+            UpdateKnob2();
+        }
 
     UpdateCv1();
     */
@@ -601,8 +641,8 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
             right = effectsConf[3].dryWet * rightW * .3f + (1.0f - effectsConf[3].dryWet) * right;
         }
 
-        OUT_L[i] = left; //compressor.Process(left);
-        OUT_R[i] = right; //compressor.Process(right);
+        OUT_L[i] = balancer.Process(left, 0.25f);
+        OUT_R[i] = balancer.Process(right, 0.25f);
     }
 
     if (randomize) {
@@ -684,13 +724,7 @@ int main(void)
 
     reverb.Init(sampleRate);
 
-/*
-    compressor.Init(sampleRate);
-    compressor.SetAttack(0.1f);
-    compressor.SetRatio(10.f);
-    compressor.SetThreshold(-6.f);
-    compressor.SetMakeup(6.f);
-*/
+    balancer.Init(sampleRate);
 
     // New seed.
     srand(time(NULL));
