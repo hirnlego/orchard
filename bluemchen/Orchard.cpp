@@ -3,11 +3,11 @@
 
 #include "Dynamics/balance.h"
 
-#include "Utility/dsp.h"
+//#include "Utility/dsp.h"
 
+#include "../commons.h"
 #include "../generatorbank.h"
 #include "../effectbank.h"
-
 
 
 using namespace kxmx;
@@ -41,13 +41,6 @@ bool envelopeGate{ false };
 
 
 
-enum class Range
-{
-    FULL,
-    HIGH,
-    LOW,
-};
-
 
 int basePitch;
 
@@ -74,87 +67,6 @@ void UpdateOled()
 }
 
 
-float RandomFloat(float min, float max)
-{
-    return min + static_cast<float>(std::rand()) / (static_cast<float>(RAND_MAX / (max - min)));
-}
-
-enum class Scale
-{
-    IONIAN,
-    DORIAN,
-    PHRYGIAN,
-    LYDIAN,
-    MIXOLYDIAN,
-    AEOLIAN,
-    LOCRIAN,
-    LAST_SCALE,
-};
-constexpr int scaleIntervals{15};
-// Ionian w-w-h-w-w-w-h
-// Dorian   w-h-w-w-w-h-w
-// Phrygian   h-w-w-w-h-w-w
-// Lydian       w-w-w-h-w-w-h
-// Mixolydian     w-w-h-w-w-h-w
-// Aeolian          w-h-w-w-h-w-w
-// Locrian            h-w-w-h-w-w-w
-int scales[static_cast<unsigned int>(Scale::LAST_SCALE)][scaleIntervals]{
-    {-12, -10, -8, -7, -5, -3, -1, 0, 2, 4, 5, 7, 9, 11, 12},
-    {-12, -10, -9, -7, -5, -3, -2, 0, 2, 3, 5, 7, 9, 10, 12},
-    {-12, -11, -9, -7, -5, -4, -2, 0, 1, 3, 5, 7, 8, 10, 12},
-    {-12, -10, -8, -6, -5, -3, -1, 0, 2, 4, 6, 7, 9, 11, 12},
-    {-12, -10, -8, -7, -5, -3, -2, 0, 2, 4, 5, 7, 9, 10, 12},
-    {-12, -10, -9, -7, -5, -4, -2, 0, 2, 3, 5, 7, 8, 10, 12},
-    {-12, -11, -9, -7, -6, -4, -2, 0, 1, 3, 5, 6, 8, 10, 12},
-};
-
-Scale currentScale{Scale::PHRYGIAN};
-
-
-int RandomInterval(Range range)
-{
-    int rnd;
-    
-    if (Range::HIGH == range)
-    {
-        int half{static_cast<int>(std::ceil(scaleIntervals / 2))};
-        rnd = half + (std::rand() % half)) - 1;
-    }
-    else if (Range::LOW == range)
-    {
-        int half{static_cast<int>(std::ceil(scaleIntervals / 2))};
-        rnd = std::rand() % half - 1;
-    }
-    else
-    {
-        rnd = std::rand() % scaleIntervals;
-    }
-
-    return rnd;
-}
-
-int RandomPitch(Range range)
-{
-    int rnd;
-
-    if (Range::HIGH == range)
-    {
-        // (midi 66-72)
-        rnd = RandomFloat(42, 72);
-    }
-    else if (Range::LOW == range)
-    {
-        // (midi 36-65)
-        rnd = RandomFloat(12, 41);
-    }
-    else
-    {
-        // (midi 36-96)
-        rnd = RandomFloat(12, 72);
-    }
-
-    return rnd;
-}
 
 
 
@@ -175,7 +87,7 @@ void UpdateKnob1()
 
 void UpdateKnob2()
 {
-    SetCharacter(knob2Value);
+    generatorBank.SetCharacter(knob2Value);
 }
 
 void UpdateCv1()
@@ -199,7 +111,7 @@ void UpdateControls()
     cv1.Process();
     cv2.Process();
 
-    envelopeGate = useEnvelope ? cv1.Value() > 0.5f : true;
+    generatorBank.SetEnvelopeGate(useEnvelope ? cv1.Value() > 0.5f : true);
     //generatorBank.SetPitch(fmap(cv2.Value(), 24.f, 84.f));
 
     if (std::abs(knob2Value - knob2.Value()) > 0.01f)

@@ -10,10 +10,12 @@
 #include "Control/adsr.h"
 #include "Utility/dsp.h"
 
-using namespace daisysp;
+#include "commons.h"
 
 namespace orchard
-{    
+{
+    using namespace daisysp;
+
     constexpr int kGenerators{ 9 };
 
     
@@ -40,73 +42,62 @@ namespace orchard
 
         void Init(float sampleRate)
         {        
-            hOsc1.Init(sampleRate);
-            hOsc1.SetWaveform(Oscillator::WAVE_SIN);
-            hOsc1.SetAmp(1.f);
+            hOsc1_.Init(sampleRate);
+            hOsc1_.SetWaveform(Oscillator::WAVE_SIN);
+            hOsc1_.SetAmp(1.f);
 
-            hOsc2.Init(sampleRate);
+            hOsc2_.Init(sampleRate);
 
-            hOsc3.Init(sampleRate);
-            hOsc3.SetWaveform(BlOsc::WAVE_TRIANGLE);
-            hOsc3.SetAmp(1.f);
+            hOsc3_.Init(sampleRate);
+            hOsc3_.SetWaveform(BlOsc::WAVE_TRIANGLE);
+            hOsc3_.SetAmp(1.f);
 
-            hOsc4.Init(sampleRate);
-            hOsc4.SetWaveform(BlOsc::WAVE_SQUARE);
-            hOsc4.SetAmp(1.f);
+            hOsc4_.Init(sampleRate);
+            hOsc4_.SetWaveform(BlOsc::WAVE_SQUARE);
+            hOsc4_.SetAmp(1.f);
 
-            lOsc1.Init(sampleRate);
-            lOsc1.SetWaveform(Oscillator::WAVE_SIN);
-            lOsc1.SetAmp(1.f);
+            lOsc1_.Init(sampleRate);
+            lOsc1_.SetWaveform(Oscillator::WAVE_SIN);
+            lOsc1_.SetAmp(1.f);
 
-            lOsc2.Init(sampleRate);
+            lOsc2_.Init(sampleRate);
 
-            lOsc3.Init(sampleRate);
-            lOsc3.SetWaveform(BlOsc::WAVE_TRIANGLE);
-            lOsc3.SetAmp(1.f);
+            lOsc3_.Init(sampleRate);
+            lOsc3_.SetWaveform(BlOsc::WAVE_TRIANGLE);
+            lOsc3_.SetAmp(1.f);
 
-            lOsc4.Init(sampleRate);
-            lOsc4.SetWaveform(BlOsc::WAVE_SQUARE);
-            lOsc4.SetAmp(1.f);
+            lOsc4_.Init(sampleRate);
+            lOsc4_.SetWaveform(BlOsc::WAVE_SQUARE);
+            lOsc4_.SetAmp(1.f);
 
-            noise.Init();
-            noise.SetAmp(1.f);
-            noiseFilterHP.Init(sampleRate);
-            noiseFilterLP.Init(sampleRate);
+            noise_.Init();
+            noise_.SetAmp(1.f);
+            noiseFilterHP_.Init(sampleRate);
+            noiseFilterLP_.Init(sampleRate);
 
             for (int i = 0; i < kGenerators; i++)
             {
-                envelopes[i].Init(sampleRate);
+                envelopes_[i].Init(sampleRate);
             }
         }
         
-        void SetCharacter(float character)
-        {
-            hOsc2.SetWaveshape(character);
-            hOsc2.SetPW(1.f - character);
-            hOsc3.SetPw(character);
-            hOsc4.SetPw(character);
-
-            lOsc2.SetWaveshape(character);
-            lOsc2.SetPW(1.f - character);
-            lOsc3.SetPw(character);
-            lOsc4.SetPw(character);
-        }
-
         void SetPitch(float pitch)
         {
-            hOsc1.SetFreq(CalcFrequency(0, pitch));
-            hOsc2.SetFreq(CalcFrequency(2, pitch));
-            hOsc3.SetFreq(CalcFrequency(4, pitch));
-            hOsc4.SetFreq(CalcFrequency(6, pitch));
+            basePitch_ = pitch;
+            SetFrequencies();
+        }
 
-            lOsc1.SetFreq(CalcFrequency(1, pitch));
-            lOsc2.SetFreq(CalcFrequency(3, pitch));
-            lOsc3.SetFreq(CalcFrequency(5, pitch));
-            lOsc4.SetFreq(CalcFrequency(7, pitch));
+        void SetCharacter(float character)
+        {
+            hOsc2_.SetWaveshape(character);
+            hOsc2_.SetPW(1.f - character);
+            hOsc3_.SetPw(character);
+            hOsc4_.SetPw(character);
 
-            float f{CalcFrequency(8, pitch)};
-            noiseFilterHP.SetFreq(f);
-            noiseFilterLP.SetFreq(f);
+            lOsc2_.SetWaveshape(character);
+            lOsc2_.SetPW(1.f - character);
+            lOsc3_.SetPw(character);
+            lOsc4_.SetPw(character);
         }
         
         void Randomize()
@@ -121,66 +112,71 @@ namespace orchard
                 if (i >= half && !active && actives < half) {
                     active = true;
                 }
-                generatorsConf[i].active = active;
+                conf_[i].active = active;
                 if (active) {
                     ++actives;
                 }
-                generatorsConf[i].pan = RandomFloat(0.3f, 0.7f);
+                conf_[i].pan = RandomFloat(0.3f, 0.7f);
 
                 if (i < kGenerators - 1) 
                 {
                     if (i % 2 == 0)
                     {
-                        generatorsConf[i].interval = RandomInterval(Range::HIGH);
+                        conf_[i].interval = RandomInterval(Range::HIGH);
                     }
                     else
                     {
-                        generatorsConf[i].interval = RandomInterval(Range::LOW);
+                        conf_[i].interval = RandomInterval(Range::LOW);
                     }
                 }
                 else
                 {
-                    generatorsConf[i].interval = RandomInterval(Range::FULL);
+                    conf_[i].interval = RandomInterval(Range::FULL);
                 }
 
-                envelopes[i].SetTime(ADSR_SEG_ATTACK, RandomFloat(0.f, 2.f));
-                envelopes[i].SetTime(ADSR_SEG_DECAY, RandomFloat(0.f, 2.f));
-                envelopes[i].SetTime(ADSR_SEG_RELEASE, RandomFloat(0.f, 2.f));
-                envelopes[i].SetSustainLevel(RandomFloat(0.f, 1.f));
+                envelopes_[i].SetTime(ADSR_SEG_ATTACK, RandomFloat(0.f, 2.f));
+                envelopes_[i].SetTime(ADSR_SEG_DECAY, RandomFloat(0.f, 2.f));
+                envelopes_[i].SetTime(ADSR_SEG_RELEASE, RandomFloat(0.f, 2.f));
+                envelopes_[i].SetSustainLevel(RandomFloat(0.f, 1.f));
 
                 /*
-                envelopes[i].SetAttackTime(0.1f);
-                envelopes[i].SetDecayTime(0.1f);
-                envelopes[i].SetSustainLevel(1.f);
-                envelopes[i].SetReleaseTime(0.1f);
+                envelopes_[i].SetAttackTime(0.1f);
+                envelopes_[i].SetDecayTime(0.1f);
+                envelopes_[i].SetSustainLevel(1.f);
+                envelopes_[i].SetReleaseTime(0.1f);
                 */
 
-                //generatorsConf[i].ringSource = std::floor(RandomFloat(0.f, kGenerators - 1));
+                //conf_[i].ringSource = std::floor(RandomFloat(0.f, kGenerators - 1));
             }
             for (int i = 0; i < kGenerators; i++)
             {
-                if (generatorsConf[i].active) {
-                    generatorsConf[i].volume = 1.f / actives; //RandomFloat(0.3f, 0.5f);
+                if (conf_[i].active) {
+                    conf_[i].volume = 1.f / actives; //RandomFloat(0.3f, 0.5f);
                 }
             }
 
-            hOsc2.SetWaveshape(RandomFloat(0.f, 1.f));
-            hOsc2.SetPW(RandomFloat(-1.f, 1.f));
+            hOsc2_.SetWaveshape(RandomFloat(0.f, 1.f));
+            hOsc2_.SetPW(RandomFloat(-1.f, 1.f));
 
-            hOsc3.SetPw(RandomFloat(-1.f, 1.f));
+            hOsc3_.SetPw(RandomFloat(-1.f, 1.f));
 
-            hOsc4.SetPw(RandomFloat(-1.f, 1.f));
+            hOsc4_.SetPw(RandomFloat(-1.f, 1.f));
 
-            lOsc2.SetWaveshape(RandomFloat(0.f, 1.f));
-            lOsc2.SetPW(RandomFloat(-1.f, 1.f));
+            lOsc2_.SetWaveshape(RandomFloat(0.f, 1.f));
+            lOsc2_.SetPW(RandomFloat(-1.f, 1.f));
 
-            lOsc3.SetPw(RandomFloat(-1.f, 1.f));
+            lOsc3_.SetPw(RandomFloat(-1.f, 1.f));
 
-            lOsc4.SetPw(RandomFloat(-1.f, 1.f));
+            lOsc4_.SetPw(RandomFloat(-1.f, 1.f));
 
-            generatorsConf[8].character = RandomFloat(1.f, 2.f);
+            conf_[8].character = RandomFloat(1.f, 2.f);
 
-            SetPitch(basePitch);
+            SetFrequencies();
+        }
+
+        void SetEnvelopeGate(bool gate)
+        {
+            envelopeGate_ = gate;
         }
 
         void Process(float &left, float &right)
@@ -189,50 +185,50 @@ namespace orchard
             float sigs[kGenerators];
             for (int i = 0; i < kGenerators; i++)
             {
-                if (generatorsConf[i].active) 
+                if (conf_[i].active) 
                 {
                     if (i == 0) {
-                        sigs[i] = hOsc1.Process();
+                        sigs[i] = hOsc1_.Process();
                     }
                     else if (i == 1)
                     {
-                        sigs[i] = lOsc1.Process();
+                        sigs[i] = lOsc1_.Process();
                     }
                     else if (i == 2)
                     {
-                        sigs[i] = hOsc2.Process();
+                        sigs[i] = hOsc2_.Process();
                     }
                     else if (i == 3)
                     {
-                        sigs[i] = lOsc2.Process();
+                        sigs[i] = lOsc2_.Process();
                     }
                     else if (i == 4)
                     {
-                        sigs[i] = hOsc3.Process();
+                        sigs[i] = hOsc3_.Process();
                     }
                     else if (i == 5)
                     {
-                        sigs[i] = lOsc3.Process();
+                        sigs[i] = lOsc3_.Process();
                     }
                     else if (i == 6)
                     {
-                        sigs[i] = hOsc4.Process();
+                        sigs[i] = hOsc4_.Process();
                     }
                     else if (i == 7)
                     {
-                        sigs[i] = lOsc4.Process();
+                        sigs[i] = lOsc4_.Process();
                     }
                     else if (i == 8)
                     {
-                        sigs[i] = noise.Process();
-                        sigs[i] = generatorsConf[i].character * sigs[i];
-                        sigs[i] = noiseFilterHP.Process(sigs[i]);
-                        sigs[i] = generatorsConf[i].character * sigs[i];
-                        sigs[i] = SoftClip(noiseFilterLP.Process(sigs[i]));
+                        sigs[i] = noise_.Process();
+                        sigs[i] = conf_[i].character * sigs[i];
+                        sigs[i] = noiseFilterHP_.Process(sigs[i]);
+                        sigs[i] = conf_[i].character * sigs[i];
+                        sigs[i] = SoftClip(noiseFilterLP_.Process(sigs[i]));
                     }
 
-                    left += sigs[i] * generatorsConf[i].volume * (1 - generatorsConf[i].pan) * envelopes[i].Process(envelopeGate);
-                    right += sigs[i] * generatorsConf[i].volume * generatorsConf[i].pan * envelopes[i].Process(envelopeGate);
+                    left += sigs[i] * conf_[i].volume * (1 - conf_[i].pan) * envelopes_[i].Process(envelopeGate_);
+                    right += sigs[i] * conf_[i].volume * conf_[i].pan * envelopes_[i].Process(envelopeGate_);
                 }
             }
 
@@ -240,12 +236,12 @@ namespace orchard
             // Apply ring modulation.
             for (int i = 0; i < kGenerators; i++)
             {
-                if (generatorsConf[i].ringSource > 0 && generatorsConf[i].active && generatorsConf[generatorsConf[i].ringSource].active)
+                if (conf_[i].ringSource > 0 && conf_[i].active && conf_[conf_[i].ringSource].active)
                 {
-                    sigs[i] = SoftClip(sigs[i] * sigs[generatorsConf[i].ringSource]);
+                    sigs[i] = SoftClip(sigs[i] * sigs[conf_[i].ringSource]);
                 }
-                left += sigs[i] * generatorsConf[i].volume * (1 - generatorsConf[i].pan) * envelopes[i].Process(envelopeGate);
-                right += sigs[i] * generatorsConf[i].volume * generatorsConf[i].pan * envelopes[i].Process(envelopeGate);
+                left += sigs[i] * conf_[i].volume * (1 - conf_[i].pan) * envelopes_[i].Process(envelopeGate);
+                right += sigs[i] * conf_[i].volume * conf_[i].pan * envelopes_[i].Process(envelopeGate);
             }
             */
         }
@@ -254,34 +250,57 @@ namespace orchard
     private:
         float CalcFrequency(int generator, float pitch)
         {
-            float midi_nn = fclamp(pitch + generatorsConf[generator].interval, 0.f, 120.f);
+            float midi_nn = fclamp(pitch + conf_[generator].interval, 0.f, 120.f);
 
             return mtof(midi_nn);
         }
 
-        Oscillator hOsc1;              // Sine
-        VariableSawOscillator hOsc2;   // Bipolar ramp
-        BlOsc hOsc3;                   // Triangle
-        BlOsc hOsc4;                   // Square
+        void SetFrequencies()
+        {
+            hOsc1_.SetFreq(CalcFrequency(0, basePitch_));
+            hOsc2_.SetFreq(CalcFrequency(2, basePitch_));
+            hOsc3_.SetFreq(CalcFrequency(4, basePitch_));
+            hOsc4_.SetFreq(CalcFrequency(6, basePitch_));
 
-        Oscillator lOsc1;              // Sine
-        VariableSawOscillator lOsc2;   // Bipolar ramp
-        BlOsc lOsc3;                   // Triangle
-        BlOsc lOsc4;                   // Square
+            lOsc1_.SetFreq(CalcFrequency(1, basePitch_));
+            lOsc2_.SetFreq(CalcFrequency(3, basePitch_));
+            lOsc3_.SetFreq(CalcFrequency(5, basePitch_));
+            lOsc4_.SetFreq(CalcFrequency(7, basePitch_));
 
-        WhiteNoise noise;
-    
-        Adsr envelopes[kGenerators];
+            float f{CalcFrequency(8, basePitch_)};
+            noiseFilterHP_.SetFreq(f);
+            noiseFilterLP_.SetFreq(f);
+        }
+
+        float basePitch_;
+        bool envelopeGate_{false};
+
+        Oscillator hOsc1_;              // Sine
+        VariableSawOscillator hOsc2_;   // Bipolar ramp
+        BlOsc hOsc3_;                   // Triangle
+        BlOsc hOsc4_;                   // Square
+
+        Oscillator lOsc1_;              // Sine
+        VariableSawOscillator lOsc2_;   // Bipolar ramp
+        BlOsc lOsc3_;                   // Triangle
+        BlOsc lOsc4_;                   // Square
+
+        WhiteNoise noise_;
+
+        ATone noiseFilterHP_;
+        Tone noiseFilterLP_;
+
+        Adsr envelopes_[kGenerators];
         // Generators configuration:
-        // 0 = hOsc1
-        // 1 = lOsc1
-        // 2 = hOsc2
-        // 3 = lOsc2
-        // 4 = hOsc3
-        // 5 = lOsc3
-        // 6 = hOsc4
-        // 7 = lOsc4
-        // 8 = noise
-        GeneratorConf generatorsConf[kGenerators];
+        // 0 = hOsc1_
+        // 1 = lOsc1_
+        // 2 = hOsc2_
+        // 3 = lOsc2_
+        // 4 = hOsc3_
+        // 5 = lOsc3_
+        // 6 = hOsc4_
+        // 7 = lOsc4_
+        // 8 = noise_
+        GeneratorConf conf_[kGenerators];
     };
 }
