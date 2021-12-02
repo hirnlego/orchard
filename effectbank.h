@@ -40,8 +40,8 @@ namespace orchard
 
             return read;
         }
-    }; 
-    
+    };
+
     struct EffectConf
     {
         bool active;
@@ -55,7 +55,7 @@ namespace orchard
         LP,
         BP,
     };
- 
+
     class EffectBank
     {
     public:
@@ -63,7 +63,7 @@ namespace orchard
         ~EffectBank() {}
 
         void Init(float sampleRate)
-        {  
+        {
             sampleRate_ = sampleRate;
 
             leftFilter_.Init(sampleRate_);
@@ -91,7 +91,8 @@ namespace orchard
         {
             // Filter.
             conf_[0].active = true; //1 == std::rand() % 2;
-            if (conf_[0].active) {
+            if (conf_[0].active)
+            {
                 conf_[0].dryWet = RandomFloat(0.f, 1.f);
                 filterType_ = static_cast<FilterType>(std::rand() % 3);
                 int pitch;
@@ -113,8 +114,8 @@ namespace orchard
                     break;
                 }
                 float freq = mtof(pitch);
-                float res{ RandomFloat(0.f, 1.f) };
-                float drive{ RandomFloat(0.f, 1.f) };
+                float res{RandomFloat(0.f, 1.f)};
+                float drive{RandomFloat(0.f, 1.f)};
                 leftFilter_.SetFreq(freq);
                 leftFilter_.SetRes(res);
                 leftFilter_.SetDrive(drive);
@@ -125,7 +126,8 @@ namespace orchard
 
             // Resonator.
             conf_[1].active = true; //1 == std::rand() % 2;
-            if (conf_[1].active) {
+            if (conf_[1].active)
+            {
                 conf_[1].dryWet = RandomFloat(0.f, 1.f);
                 resonator_.SetDecay(RandomFloat(0.f, 0.4f));
                 resonator_.SetDetune(RandomFloat(0.f, 0.1f));
@@ -134,7 +136,7 @@ namespace orchard
                 resonator_.SetPitch(1, RandomPitch(Range::FULL));
                 resonator_.SetPitch(2, RandomPitch(Range::FULL));
                 resonator_.SetDamp(RandomFloat(100.f, 5000.f));
-            /*
+                /*
             conf_[1].dryWet = 1.f;
             resonator_.SetDecay(0.4f);
             resonator_.SetDetune(0.f);
@@ -148,7 +150,8 @@ namespace orchard
 
             // Delay.
             conf_[2].active = false; //1 == std::rand() % 2;
-            if (conf_[2].active) {
+            if (conf_[2].active)
+            {
                 leftDelay_.Reset();
                 rightDelay_.Reset();
                 conf_[2].dryWet = RandomFloat(0.f, 1.f);
@@ -159,7 +162,8 @@ namespace orchard
 
             // Reverb.
             conf_[3].active = true; //1 == std::rand() % 2;
-            if (conf_[3].active) {
+            if (conf_[3].active)
+            {
                 conf_[3].dryWet = RandomFloat(0.f, 1.f);
                 float fb{RandomFloat(0.f, 0.9f)};
                 reverb.SetFeedback(fb);
@@ -170,11 +174,12 @@ namespace orchard
         void Process(float &left, float &right)
         {
             // Effects.
-            float leftW{ 0.f };
-            float rightW{ 0.f };
+            float leftW{0.f};
+            float rightW{0.f};
 
             // Filter.
-            if (conf_[0].active) {
+            if (conf_[0].active)
+            {
                 leftFilter_.Process(left);
                 rightFilter_.Process(right);
                 switch (filterType_)
@@ -202,7 +207,8 @@ namespace orchard
             }
 
             // Resonator.
-            if (conf_[1].active) {
+            if (conf_[1].active)
+            {
                 leftW = left;
                 rightW = right;
                 resonator_.Process(leftW, rightW);
@@ -211,7 +217,8 @@ namespace orchard
             }
 
             // Delay.
-            if (conf_[2].active) {
+            if (conf_[2].active)
+            {
                 leftW = leftDelay_.Process(conf_[2].param1, left);
                 rightW = rightDelay_.Process(conf_[2].param1, right);
                 left = conf_[2].dryWet * leftW * .3f + (1.0f - conf_[2].dryWet) * left;
@@ -219,7 +226,8 @@ namespace orchard
             }
 
             // Reverb.
-            if (conf_[3].active) {
+            if (conf_[3].active)
+            {
                 reverb.Process(left, right, &leftW, &rightW);
                 left = conf_[3].dryWet * leftW * .3f + (1.0f - conf_[3].dryWet) * left;
                 right = conf_[3].dryWet * rightW * .3f + (1.0f - conf_[3].dryWet) * right;
@@ -227,8 +235,6 @@ namespace orchard
         }
 
     private:
-
-
         Svf leftFilter_;
         Svf rightFilter_;
         delay leftDelay_;

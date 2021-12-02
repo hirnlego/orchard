@@ -16,9 +16,8 @@ namespace orchard
 {
     using namespace daisysp;
 
-    constexpr int kGenerators{ 9 };
+    constexpr int kGenerators{9};
 
-    
     struct GeneratorConf
     {
         bool active;
@@ -29,9 +28,7 @@ namespace orchard
         float character;
         int ringSource;
         float ringAmt;
-
     };
-
 
     class GeneratorBank
     {
@@ -41,7 +38,7 @@ namespace orchard
         ~GeneratorBank() {}
 
         void Init(float sampleRate)
-        {        
+        {
             hOsc1_.Init(sampleRate);
             hOsc1_.SetWaveform(Oscillator::WAVE_SIN);
             hOsc1_.SetAmp(1.f);
@@ -80,10 +77,10 @@ namespace orchard
                 envelopes_[i].Init(sampleRate);
             }
         }
-        
+
         void SetPitch(float pitch)
         {
-            basePitch_ = pitch;
+            basePitch_ = fclamp(pitch, 0, 127);
             SetFrequencies();
         }
 
@@ -99,26 +96,27 @@ namespace orchard
             lOsc3_.SetPw(character);
             lOsc4_.SetPw(character);
         }
-        
+
         void Randomize()
         {
-            //float volume{ 0.f };
-            int actives{ 0 };
-            int half{ kGenerators / 2 };
+            int actives{0};
+            int half{kGenerators / 2};
             for (int i = 0; i < kGenerators; i++)
             {
-                bool active{ 1 == std::rand() % 2 };
+                bool active{1 == std::rand() % 2};
                 // Limit the number of inactive generators to half of their total number.
-                if (i >= half && !active && actives < half) {
+                if (i >= half && !active && actives < half)
+                {
                     active = true;
                 }
                 conf_[i].active = active;
-                if (active) {
+                if (active)
+                {
                     ++actives;
                 }
                 conf_[i].pan = RandomFloat(0.3f, 0.7f);
 
-                if (i < kGenerators - 1) 
+                if (i < kGenerators - 1)
                 {
                     if (i % 2 == 0)
                     {
@@ -134,23 +132,17 @@ namespace orchard
                     conf_[i].interval = RandomInterval(Range::FULL);
                 }
 
-                envelopes_[i].SetTime(ADSR_SEG_ATTACK, RandomFloat(0.f, 2.f));
-                envelopes_[i].SetTime(ADSR_SEG_DECAY, RandomFloat(0.f, 2.f));
-                envelopes_[i].SetTime(ADSR_SEG_RELEASE, RandomFloat(0.f, 2.f));
+                envelopes_[i].SetAttackTime(RandomFloat(0.f, 2.f));
+                envelopes_[i].SetDecayTime(RandomFloat(0.f, 2.f));
                 envelopes_[i].SetSustainLevel(RandomFloat(0.f, 1.f));
-
-                /*
-                envelopes_[i].SetAttackTime(0.1f);
-                envelopes_[i].SetDecayTime(0.1f);
-                envelopes_[i].SetSustainLevel(1.f);
-                envelopes_[i].SetReleaseTime(0.1f);
-                */
+                envelopes_[i].SetReleaseTime(RandomFloat(0.f, 2.f));
 
                 //conf_[i].ringSource = std::floor(RandomFloat(0.f, kGenerators - 1));
             }
             for (int i = 0; i < kGenerators; i++)
             {
-                if (conf_[i].active) {
+                if (conf_[i].active)
+                {
                     conf_[i].volume = 1.f / actives; //RandomFloat(0.3f, 0.5f);
                 }
             }
@@ -185,9 +177,10 @@ namespace orchard
             float sigs[kGenerators];
             for (int i = 0; i < kGenerators; i++)
             {
-                if (conf_[i].active) 
+                if (conf_[i].active)
                 {
-                    if (i == 0) {
+                    if (i == 0)
+                    {
                         sigs[i] = hOsc1_.Process();
                     }
                     else if (i == 1)
@@ -246,7 +239,6 @@ namespace orchard
             */
         }
 
-
     private:
         float CalcFrequency(int generator, float pitch)
         {
@@ -275,15 +267,15 @@ namespace orchard
         float basePitch_;
         bool envelopeGate_{false};
 
-        Oscillator hOsc1_;              // Sine
-        VariableSawOscillator hOsc2_;   // Bipolar ramp
-        BlOsc hOsc3_;                   // Triangle
-        BlOsc hOsc4_;                   // Square
+        Oscillator hOsc1_;            // Sine
+        VariableSawOscillator hOsc2_; // Bipolar ramp
+        BlOsc hOsc3_;                 // Triangle
+        BlOsc hOsc4_;                 // Square
 
-        Oscillator lOsc1_;              // Sine
-        VariableSawOscillator lOsc2_;   // Bipolar ramp
-        BlOsc lOsc3_;                   // Triangle
-        BlOsc lOsc4_;                   // Square
+        Oscillator lOsc1_;            // Sine
+        VariableSawOscillator lOsc2_; // Bipolar ramp
+        BlOsc lOsc3_;                 // Triangle
+        BlOsc lOsc4_;                 // Square
 
         WhiteNoise noise_;
 

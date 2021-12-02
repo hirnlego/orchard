@@ -67,7 +67,8 @@
         "variant": "cpp",
         "codecvt": "cpp",
         "shared_mutex": "cpp",
-        "cinttypes": "cpp"
+        "cinttypes": "cpp",
+        "complex": "cpp"
     },
     "C_Cpp.vcFormat.indent.accessSpecifiers": true,
     "C_Cpp.autocompleteAddParentheses": true,
